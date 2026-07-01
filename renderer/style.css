@@ -1,0 +1,101 @@
+:root {
+  --bg: #0F0F14;
+  --surface: #1A1A22;
+  --surface2: #242430;
+  --border: #2A2A36;
+  --text: #ECECF1;
+  --muted: #9A9AA8;
+  --primary: #8B7CFF;
+  --primary-dim: #6F5FE6;
+  --live: #FF5C7A;
+  --safe: #54E6C0;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  -webkit-user-select: none;
+  user-select: none;
+  padding: 0 22px 22px;
+}
+
+.hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 38px 4px 18px;
+  -webkit-app-region: drag;
+}
+.logo { width: 56px; height: 56px; border-radius: 14px; }
+.hero-text { flex: 1; }
+h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.5px; }
+.hero-text p { color: var(--muted); font-size: 13.5px; margin-top: 3px; }
+
+.status {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--muted);
+  -webkit-app-region: no-drag;
+}
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+.dot.idle { background: var(--muted); }
+.dot.active { background: var(--safe); box-shadow: 0 0 8px var(--safe); }
+.dot.warn { background: var(--live); box-shadow: 0 0 8px var(--live); }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 14px 12px;
+  margin-top: 12px;
+}
+.card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin-bottom: 12px; }
+.muted { color: var(--muted); font-size: 13px; }
+
+.binding { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 11px 0; }
+.binding + .binding { border-top: 1px solid var(--border); }
+.binding-label { display: flex; flex-direction: column; gap: 3px; }
+.binding-label strong { font-size: 15.5px; font-weight: 600; }
+
+.capture {
+  font-family: ui-monospace, 'SF Mono', monospace;
+  font-size: 17px; font-weight: 600;
+  min-width: 96px; text-align: center;
+  color: var(--text);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 14px; cursor: pointer;
+  transition: all 0.12s ease;
+}
+.capture:hover { border-color: var(--primary-dim); }
+.capture.armed { border-color: var(--primary); color: var(--primary); box-shadow: 0 0 0 3px rgba(139,124,255,0.18); }
+
+.segment { display: flex; background: var(--surface2); border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+.segment button { background: transparent; color: var(--muted); border: 0; padding: 7px 14px; font-size: 12.5px; cursor: pointer; }
+.segment button.active { background: var(--primary); color: #14101f; font-weight: 600; }
+
+input[type=range] { -webkit-appearance: none; width: 150px; height: 4px; border-radius: 4px; background: var(--surface2); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--primary); cursor: pointer; }
+
+.perm-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
+.pill { font-size: 11.5px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); }
+.pill-warn { color: #ffce6b; border-color: rgba(255,206,107,0.4); }
+.pill-ok { color: var(--safe); border-color: rgba(84,230,192,0.4); }
+
+button.ghost { background: transparent; color: var(--primary); border: 1px solid var(--border); border-radius: 8px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+button.ghost:hover { border-color: var(--primary-dim); }
+
+.err { color: var(--live); font-size: 12px; min-height: 16px; margin-top: 10px; }
+
+.actions { display: flex; gap: 10px; margin-top: 6px; }
+.actions button { flex: 1; padding: 13px; border-radius: 12px; font-size: 15.5px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); }
+.primary { background: var(--primary); color: #14101f; border: 0; }
+.primary:hover { background: var(--primary-dim); }
+.quit { background: transparent; color: var(--muted); }
+.quit:hover { color: var(--live); border-color: rgba(255,92,122,0.4); }
+
+.hint { color: var(--muted); font-size: 13px; margin-top: 16px; line-height: 1.55; }
+.hint em { color: var(--text); font-style: normal; font-weight: 600; }

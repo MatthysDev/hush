@@ -1,0 +1,64 @@
+{
+  "name": "hush",
+  "version": "0.1.0",
+  "description": "Push-to-talk bridge: mute Discord while you dictate with Wispr Flow",
+  "author": "Matthys Ducrocq",
+  "license": "MIT",
+  "main": "dist/main.js",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "rebuild": "electron-builder install-app-deps",
+    "start": "npm run build && electron .",
+    "pack": "npm run build && electron-builder --mac --dir",
+    "dist": "npm run build && electron-builder --mac"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.6.0",
+    "@types/node": "^20.11.0",
+    "electron": "^30.0.9",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  },
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.0",
+    "electron-store": "^8.2.0",
+    "uiohook-napi": "^1.5.4"
+  },
+  "build": {
+    "appId": "com.hush.app",
+    "productName": "Hush",
+    "directories": {
+      "buildResources": "build",
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "renderer/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.node",
+      "node_modules/uiohook-napi/**",
+      "node_modules/@nut-tree-fork/**"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg"
+      ],
+      "icon": "build/icon.icns",
+      "identity": null,
+      "extendInfo": {
+        "LSUIElement": true,
+        "NSAppleEventsUsageDescription": "Hush sends keystrokes to mute Discord and trigger Wispr Flow."
+      }
+    },
+    "dmg": {
+      "title": "Hush"
+    }
+  }
+}

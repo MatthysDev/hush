@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: file:; style-src 'self' 'unsafe-inline';" />
+  <title>Hush</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="hero">
+    <img class="logo" src="../assets/icon.svg" alt="Hush" />
+    <div class="hero-text">
+      <h1 id="brand-name">Hush</h1>
+      <p id="brand-tagline">Coupe Discord pendant que tu dictes.</p>
+    </div>
+    <div class="status" id="status">
+      <span class="dot" id="status-dot"></span>
+      <span id="status-label">…</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="card" id="perm-card">
+      <h2>Permissions macOS</h2>
+      <p class="muted">Hush a besoin d'écouter une touche globale et de simuler des raccourcis.</p>
+      <div class="perm-row">
+        <span id="acc-state" class="pill pill-warn">Accessibilité : à activer</span>
+        <button class="ghost" id="open-acc">Ouvrir</button>
+      </div>
+      <div class="perm-row">
+        <span id="input-state" class="pill pill-warn">Surveillance de la saisie : à activer</span>
+        <button class="ghost" id="open-input">Ouvrir</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Raccourcis</h2>
+
+      <div class="binding">
+        <div class="binding-label">
+          <strong>Déclencheur</strong>
+          <span class="muted">la touche que TU presses</span>
+        </div>
+        <button class="capture" data-field="trigger" id="cap-trigger">F13</button>
+      </div>
+
+      <div class="binding">
+        <div class="binding-label">
+          <strong>Discord — Toggle Mute</strong>
+          <span class="muted">le même combo que dans Discord</span>
+        </div>
+        <button class="capture" data-field="discordCombo" id="cap-discord">⌃⌥⌘1</button>
+      </div>
+
+      <div class="binding">
+        <div class="binding-label">
+          <strong>Wispr — Push-to-talk</strong>
+          <span class="muted">le même combo que dans Wispr</span>
+        </div>
+        <button class="capture" data-field="wisprCombo" id="cap-wispr">⌃⌥⌘2</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Comportement</h2>
+      <div class="binding">
+        <div class="binding-label"><strong>Mode</strong></div>
+        <div class="segment" id="mode-seg">
+          <button data-mode="hold" class="active">Maintenir</button>
+          <button data-mode="toggle">Bascule</button>
+        </div>
+      </div>
+      <div class="binding">
+        <div class="binding-label">
+          <strong>Délai mute → dictée</strong>
+          <span class="muted"><span id="gap-val">25</span> ms</span>
+        </div>
+        <input type="range" id="gap" min="0" max="200" step="5" value="25" />
+      </div>
+      <div class="binding">
+        <div class="binding-label">
+          <strong>Délai avant unmute</strong>
+          <span class="muted"><span id="delay-val">0</span> ms</span>
+        </div>
+        <input type="range" id="delay" min="0" max="500" step="50" value="0" />
+      </div>
+    </section>
+
+    <p class="err" id="err"></p>
+
+    <div class="actions">
+      <button class="quit" id="quit">Quitter</button>
+      <button class="primary" id="save">Enregistrer</button>
+    </div>
+
+    <p class="hint">Pour capturer un raccourci : clique le bouton, puis presse ta touche. Pour une <em>combinaison de modificateurs seuls</em> (ex. <em>⌃⌥</em>), maintiens-les puis relâche. Échap = annuler.<br/>Mets le combo Discord (Toggle Mute) et le combo Wispr (push-to-talk) <em>identiques</em> à ce que tu vois ci-dessus.</p>
+  </main>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
