@@ -63,11 +63,12 @@ describe('MuteServer', () => {
   });
 
   it('rejects an incompatible protocol version', () => {
-    const { listener } = setup();
+    const { listener, muter } = setup();
     const c = listener.connect();
     c.fireMessage(encode({ t: 'hello', v: 999, code: 'ABC123' }));
     expect(c.msgs().some((m) => m.t === 'reject')).toBe(true);
     expect(c.closed).toBe(true);
+    expect(muter.setMute).not.toHaveBeenCalled();
   });
 
   it('relays a mute frame from an authed controller', () => {
@@ -91,6 +92,43 @@ describe('MuteServer', () => {
     c.fireMessage(encode({ t: 'hello', v: PROTOCOL_VERSION, code: 'ABC123' }));
     c.fireMessage(encode({ t: 'mute', on: true }));
     c.fireClose();
+    expect((muter as any).calls).toEqual([true, false]);
+  });
+
+  it('holds mute across multiple controllers until the last one releases', () => {
+    const { listener, muter } = setup();
+    const c1 = listener.connect();
+    c1.fireMessage(encode({ t: 'hello', v: PROTOCOL_VERSION, code: 'ABC123' }));
+    const c2 = listener.connect();
+    c2.fireMessage(encode({ t: 'hello', v: PROTOCOL_VERSION, code: 'ABC123' }));
+
+    c1.fireMessage(encode({ t: 'mute', on: true }));
+    c2.fireMessage(encode({ t: 'mute', on: true }));
+    expect((muter as any).calls).toEqual([true]);
+
+    c1.fireClose();
+    // c2 is still holding the mute, so Discord must stay muted.
+    expect((muter as any).calls).toEqual([true]);
+
+    c2.fireClose();
+    expect((muter as any).calls).toEqual([true, false]);
+  });
+
+  it('is idempotent for duplicate mute frames from the same controller', () => {
+    const { listener, muter } = setup();
+    const c = listener.connect();
+    c.fireMessage(encode({ t: 'hello', v: PROTOCOL_VERSION, code: 'ABC123' }));
+    c.fireMessage(encode({ t: 'mute', on: true }));
+    c.fireMessage(encode({ t: 'mute', on: true }));
+    expect((muter as any).calls).toEqual([true]);
+  });
+
+  it('unmutes on stop() if a mute was still held (fail-safe for ws.close() not firing close events)', () => {
+    const { listener, muter, server } = setup();
+    const c = listener.connect();
+    c.fireMessage(encode({ t: 'hello', v: PROTOCOL_VERSION, code: 'ABC123' }));
+    c.fireMessage(encode({ t: 'mute', on: true }));
+    server.stop();
     expect((muter as any).calls).toEqual([true, false]);
   });
 });

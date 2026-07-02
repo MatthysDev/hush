@@ -26,6 +26,11 @@ export class MuteServer {
 
   stop(): void {
     try { this.listener.close(); } catch { /* noop */ }
+    // Defensive fail-safe: the real WebSocketServer.close() does NOT fire
+    // existing sockets' close events, so a held mute would otherwise be
+    // silently forgotten and Discord would stay muted. Only unmute if
+    // something was actually held (idempotent no-op otherwise).
+    if (this.holdingMute.size > 0) void this.muter.setMute(false);
     this.authed.clear();
     this.holdingMute.clear();
   }
@@ -75,6 +80,8 @@ export class MuteServer {
     else this.holdingMute.delete(sock);
     const after = this.holdingMute.size;
     // Only touch Discord on a real edge: first holder mutes, last release unmutes.
+    // Fire-and-forget is safe here: both concrete DiscordMuter implementations
+    // swallow their own errors internally and never reject this promise.
     if (before === 0 && after > 0) void this.muter.setMute(true);
     else if (before > 0 && after === 0) void this.muter.setMute(false);
   }
