@@ -6,6 +6,13 @@ import { dbg } from './debug';
 // set a hair before uiohook delivers a Fn-region key's key-down.
 export const CONFIRM_POLLS = 2;
 
+// How many consecutive clean-LOW polls are needed before we (re-)arm. macOS's
+// polled fn flag is only *eventually consistent* with key events — there is a
+// documented case where an unrelated mouse event momentarily resets the modifier
+// flags to 0. Requiring the flag to read low for two polls means a single-poll
+// glitch mid-linger can't re-arm us and fire a phantom press.
+export const ARM_POLLS = 2;
+
 // Pure state machine that decides whether the macOS Fn / Globe key is being held,
 // from two signals: the Fn flag (kCGEventFlagMaskSecondaryFn, polled) and the raw
 // key-down/up stream (uiohook). No native dependency, so it is unit-testable; the
@@ -13,20 +20,23 @@ export const CONFIRM_POLLS = 2;
 //
 // The crux: the Fn / Globe key produces NO key event — EVERY other key does. But
 // arrows, Page Up/Down, Home/End, Delete and F1–F12 ("Fn-region" keys) ALSO set
-// the Fn flag, and that flag LINGERS for tens of ms after the key is released,
-// after uiohook has already reported the key-up. So "flag set + no key down" is
-// NOT enough to mean Fn — right after releasing an arrow (or Delete) it is just
-// the flag decaying, and naively trusting it mutes Discord on every arrow/Delete.
+// the very same fn flag (they are AppKit "function keys"), and that flag is not
+// perfectly synchronised with the key-up: right after releasing an arrow the flag
+// can still read set for a few polls, after uiohook has already reported the
+// key-up. So "flag set + no key down" is NOT enough to mean Fn — it is just the
+// flag settling, and naively trusting it mutes Discord on every arrow/Delete.
 //
-// Fix: only a *clean rising edge* counts. We must first observe an idle baseline
-// (flag low, no key down) to `arm`; only then does the flag going high (with no
-// key down) count as a real Fn press. A lingering flag never re-arms — the flag
-// was already high when the key was released, so there is no rising edge — and is
-// ignored until it actually decays to low and a genuine press raises it again.
+// Fix: only a *clean rising edge* counts, and we never assume a fixed settling
+// time. We must first observe an idle baseline (flag low, no key down) for a
+// couple of polls to `arm`; only then does the flag going high (with no key down)
+// count as a real Fn press. A settling flag never re-arms — it was already high
+// when the key was released, so there is no rising edge — and it is ignored until
+// it actually drops low (stably) and a genuine press raises it again.
 export class FnDetector {
   private down = false;
-  private armed = false; // saw a clean idle baseline since the last key activity
-  private cleanCount = 0;
+  private armed = false; // saw a stable clean-low baseline since the last key activity
+  private cleanCount = 0; // consecutive fn-high polls while armed (→ press)
+  private lowCount = 0; // consecutive clean-low polls (→ arm)
   private readonly pressed = new Set<number>();
 
   constructor(
@@ -61,6 +71,7 @@ export class FnDetector {
         this.down = false;
         this.armed = false;
         this.cleanCount = 0;
+        this.lowCount = 0;
         dbg('fn: release');
         this.onRelease();
       }
@@ -73,21 +84,26 @@ export class FnDetector {
       // A real key is physically down → whatever the flag says, it isn't Fn.
       this.armed = false;
       this.cleanCount = 0;
+      this.lowCount = 0;
       return;
     }
 
     if (!fnDown) {
-      // Clean idle baseline: arm so the NEXT time the flag rises it counts.
-      this.armed = true;
+      // Clean-low baseline. Arm only once it has held for ARM_POLLS, so a lone
+      // glitch poll (macOS resetting the fn flag on an unrelated event) mid-linger
+      // can't re-arm us.
       this.cleanCount = 0;
+      if (this.lowCount < ARM_POLLS) this.lowCount++;
+      if (this.lowCount >= ARM_POLLS) this.armed = true;
       return;
     }
 
     // fnDown && noKeys.
+    this.lowCount = 0;
     if (!this.armed) {
-      // Flag is high but we never saw a clean-low baseline since the last key was
-      // down: this is the Fn flag LINGERING after a Fn-region key (arrow, Delete,
-      // F-key…) was released. Ignore it — no rising edge, no press.
+      // Flag is high but we never saw a stable clean-low baseline since the last
+      // key was down: this is the fn flag SETTLING after a Fn-region key (arrow,
+      // Delete, F-key…) was released. Ignore it — no rising edge, no press.
       this.cleanCount = 0;
       return;
     }
@@ -107,6 +123,7 @@ export class FnDetector {
     this.down = false;
     this.armed = false;
     this.cleanCount = 0;
+    this.lowCount = 0;
     this.pressed.clear();
   }
 }
