@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@nut-tree-fork/nut-js": "^4.2.0",
+    "discord-rpc": "^4.0.1",
     "electron-store": "^8.2.0",
     "uiohook-napi": "^1.5.4"
   },
@@ -38,6 +39,7 @@
       "dist/**/*",
       "renderer/**/*",
       "assets/**/*",
+      "native/**/*",
       "package.json"
     ],
     "asarUnpack": [

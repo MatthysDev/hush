@@ -15,6 +15,7 @@ import {
   isUiohookEscape,
   uiohookKeyToKey,
 } from './input-engine';
+import { registerTestBench } from './experiments';
 
 interface MacPermissions {
   getAuthStatus(type: string): string;
@@ -43,9 +44,11 @@ export type CaptureResult =
 
 const ASSETS = path.join(__dirname, '..', 'assets');
 const RENDERER = path.join(__dirname, '..', 'renderer', 'index.html');
+const RENDERER_TESTBENCH = path.join(__dirname, '..', 'renderer', 'testbench.html');
 
 let tray: Tray | null = null;
 let win: BrowserWindow | null = null;
+let testWin: BrowserWindow | null = null;
 
 // One guard shared by the synth (marks the injection window) and the input
 // engine (drops those self-generated events). Without it a modifier-only
@@ -86,6 +89,7 @@ function refreshTrayMenu() {
       { label: `Mode : ${cfg.mode === 'hold' ? 'Maintenir' : 'Bascule'}`, enabled: false },
       { type: 'separator' },
       { label: 'Réglages…', click: showWindow },
+      { label: 'Ouvrir le Test Bench…', click: showTestBench },
       { label: 'Quitter Hush', click: () => app.quit() },
     ]),
   );
@@ -152,6 +156,34 @@ function showWindow() {
     pushStatus();
   });
   win.on('closed', () => { win = null; });
+}
+
+function showTestBench() {
+  if (testWin) {
+    testWin.show();
+    testWin.focus();
+    return;
+  }
+  testWin = new BrowserWindow({
+    width: 620,
+    height: 860,
+    resizable: true,
+    minWidth: 520,
+    minHeight: 640,
+    fullscreenable: false,
+    title: `${BRAND.name} — Test Bench`,
+    titleBarStyle: 'hiddenInset',
+    backgroundColor: BRAND.colors.bg,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  testWin.loadFile(RENDERER_TESTBENCH);
+  testWin.once('ready-to-show', () => testWin?.show());
+  testWin.on('closed', () => { testWin = null; });
 }
 
 function authStatus(type: string): string | null {
@@ -273,6 +305,10 @@ if (!app.requestSingleInstanceLock()) {
       );
     });
     ipcMain.on('app:quit', () => app.quit());
+    ipcMain.on('testbench:open', showTestBench);
+
+    // Experiment test bench (isolated from the push-to-talk engine).
+    registerTestBench(ipcMain, () => cfg);
   });
 
   // Watchdog: never leave Discord muted on quit/crash.

@@ -86,6 +86,26 @@ Defaults live in `src/config.ts` and are persisted via `electron-store`:
 | `muteDictateGapMs` | `25`           | Gap between muting Discord and dictating  |
 | `unmuteDelayMs`    | `0`            | Delay before unmuting on release          |
 
+## Test Bench — experiments to actually mute Discord
+
+Hush's original premise failed on one fact: **Discord honors a real keypress but
+ignores a synthesized one**, so injecting its mute hotkey never worked. The Test
+Bench is a throwaway window (tray menu → **Ouvrir le Test Bench…**) to try four
+alternatives live on a real Discord call and see which one works. All of it is
+isolated in `src/experiments/` + `native/` and touches nothing in the push-to-talk
+engine.
+
+| Tab | Approach | What you need |
+|---|---|---|
+| **A — Discord RPC** | Connect to Discord's local IPC socket and call `SET_VOICE_SETTINGS { mute }` — no keystroke at all. | A Discord app `client_id` + `client_secret` ([dev portal](https://discord.com/developers/applications), redirect `http://localhost`). Needs the `rpc.voice.write` scope, which Discord whitelists — the console tells you if it's refused. |
+| **B — HID keystroke** | Post the mute combo at the **HID event tap** (`native/hush-hid.swift`) so it looks like real hardware, not the session-level CGEvent nut-js sends. | Grant `hush-hid` **Accessibility** on first run. Uses the Discord combo configured in Hush. |
+| **C — Accessibility** | Press Discord's mute **button** through the AX tree (`native/hush-ax.swift`) — like VoiceOver. | Grant `hush-ax` **Accessibility**; Discord open. `Lister les boutons` dumps the AX labels for debugging. |
+| **D — Audio device** | Detect a virtual audio device (BlackHole/Loopback) to isolate Discord's input from Wispr's mic. Ships a *degraded* system-input mute as a fallback. | `brew install blackhole-2ch` for the real thing; the degraded test mutes Wispr too (by design). |
+
+The Swift helpers are compiled on first use to `native/bin/` (a stable path so the
+macOS Accessibility grant sticks). Run the bench with `npm start` → tray → Test
+Bench. Winner(s) get wired into the real flow afterwards.
+
 ## License
 
 MIT © Matthys Ducrocq

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: file:; style-src 'self' 'unsafe-inline';" />
+  <title>Hush — Test Bench</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .tabs { display: flex; gap: 6px; margin-top: 14px; }
+    .tabs button {
+      flex: 1; background: var(--surface2); color: var(--muted);
+      border: 1px solid var(--border); border-radius: 9px; padding: 9px 6px;
+      font-size: 12.5px; cursor: pointer; -webkit-app-region: no-drag;
+    }
+    .tabs button.active { background: var(--primary); color: #14101f; font-weight: 600; border-color: var(--primary); }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .desc { color: var(--muted); font-size: 13px; line-height: 1.5; margin-bottom: 12px; }
+    .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+    .field label { font-size: 12px; color: var(--muted); }
+    .field input {
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); padding: 9px 11px; font-size: 13.5px; font-family: ui-monospace, 'SF Mono', monospace;
+    }
+    .field input:focus { outline: none; border-color: var(--primary); }
+    .btnrow { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 2px; }
+    .btnrow button {
+      padding: 10px 14px; border-radius: 10px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+    }
+    .btnrow button.primary { background: var(--primary); color: #14101f; border: 0; }
+    .btnrow button.primary:hover { background: var(--primary-dim); }
+    .btnrow button:hover { border-color: var(--primary-dim); }
+    .combo-badge { font-family: ui-monospace, 'SF Mono', monospace; color: var(--primary); font-weight: 600; }
+    .note { color: var(--muted); font-size: 12px; line-height: 1.5; margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+    .note strong { color: var(--text); font-weight: 600; }
+    .console-h { display: flex; align-items: center; justify-content: space-between; margin: 16px 0 6px; }
+    .console-h h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); }
+    #log {
+      background: #0A0A0E; border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px 14px; font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px;
+      line-height: 1.55; color: var(--text); max-height: 240px; overflow-y: auto; white-space: pre-wrap;
+      -webkit-user-select: text; user-select: text;
+    }
+    #log .ok { color: var(--safe); }
+    #log .ko { color: var(--live); }
+    #log .t { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <img class="logo" src="../assets/icon.svg" alt="Hush" />
+    <div class="hero-text">
+      <h1>Test Bench</h1>
+      <p>4 façons de couper Discord — teste laquelle marche sur un vrai call.</p>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button data-tab="a" class="active">A · RPC</button>
+    <button data-tab="b">B · HID</button>
+    <button data-tab="c">C · Accessibilité</button>
+    <button data-tab="d">D · Audio</button>
+  </div>
+
+  <main>
+    <!-- A -->
+    <section class="panel active card" data-panel="a">
+      <p class="desc">La vraie API : on parle au socket IPC local de Discord et on pose l'état mute via <strong>SET_VOICE_SETTINGS</strong>. Aucune touche synthétique.</p>
+      <div class="field"><label>client_id</label><input id="rpc-id" placeholder="123456789012345678" /></div>
+      <div class="field"><label>client_secret</label><input id="rpc-secret" type="password" placeholder="•••••••••••••••" /></div>
+      <div class="btnrow">
+        <button class="primary" id="rpc-connect">Connecter</button>
+        <button id="rpc-mute">Mute</button>
+        <button id="rpc-unmute">Unmute</button>
+        <button id="rpc-disc">Déconnecter</button>
+      </div>
+      <p class="note"><strong>Créer l'app :</strong> <span class="combo-badge">discord.com/developers/applications</span> → New Application → Copie l'<strong>Application ID</strong> (= client_id) et un <strong>Client Secret</strong> (onglet OAuth2) → dans OAuth2, ajoute la redirect <span class="combo-badge">http://localhost</span>. Puis Connecter (Discord affichera une popup d'autorisation). ⚠️ Le scope <span class="combo-badge">rpc.voice.write</span> est whitelisté par Discord : si refusé, le log le dira.</p>
+    </section>
+
+    <!-- B -->
+    <section class="panel card" data-panel="b">
+      <p class="desc">On envoie le raccourci mute de Discord au niveau <strong>HID</strong> (comme un vrai clavier), pas au niveau session comme nut-js. Combo utilisé = celui configuré dans Hush : <span class="combo-badge" id="b-combo">…</span></p>
+      <div class="btnrow">
+        <button class="primary" id="hid-tap">Envoyer le combo via HID</button>
+      </div>
+      <p class="note"><strong>1er lancement :</strong> macOS va demander d'autoriser <span class="combo-badge">hush-hid</span> dans Réglages › Confidentialité › <strong>Accessibilité</strong> (l'injection d'événements y est soumise). Active-le puis réessaie. Discord doit avoir sa keybind mute réglée sur ce combo.</p>
+    </section>
+
+    <!-- C -->
+    <section class="panel card" data-panel="c">
+      <p class="desc">On clique le bouton mute de Discord via l'<strong>API Accessibilité</strong> (comme VoiceOver), pas de touche du tout.</p>
+      <div class="btnrow">
+        <button class="primary" id="ax-toggle">Toggle mute (AX)</button>
+        <button id="ax-dump">Lister les boutons</button>
+      </div>
+      <p class="note"><strong>1er lancement :</strong> autorise <span class="combo-badge">hush-ax</span> dans Réglages › Confidentialité › <strong>Accessibilité</strong>. Discord doit être <strong>lancé avec sa fenêtre ouverte</strong>. Si “Toggle” ne trouve rien, clique “Lister les boutons” pour voir les libellés réels.</p>
+    </section>
+
+    <!-- D -->
+    <section class="panel card" data-panel="d">
+      <p class="desc">Le vrai fix audio isole l'entrée de Discord du micro de Wispr — ça demande un <strong>device virtuel</strong> (BlackHole/Loopback). Ici : détection + un test <strong>dégradé</strong>.</p>
+      <div class="btnrow">
+        <button class="primary" id="audio-detect">Détecter les périphériques</button>
+        <button id="audio-mute">Couper l'entrée (dégradé)</button>
+        <button id="audio-unmute">Rétablir</button>
+      </div>
+      <p class="note">⚠️ Le test dégradé coupe l'entrée <strong>système</strong> → ça coupe aussi Wispr. C'est la limite sans device virtuel. Installe <span class="combo-badge">brew install blackhole-2ch</span> pour le vrai test, puis relance la détection.</p>
+    </section>
+
+    <div class="console-h">
+      <h2>Console</h2>
+      <button class="ghost" id="clear">Vider</button>
+    </div>
+    <pre id="log"></pre>
+  </main>
+
+  <script src="testbench.js"></script>
+</body>
+</html>
