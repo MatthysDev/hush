@@ -4,9 +4,9 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Hush — dictate on Discord without broadcasting it</title>
-<meta name="description" content="Hush is a tiny macOS menu-bar app. Hold the same push-to-talk shortcut you already use for Wispr Flow, and Hush mutes your Discord mic over RPC while it's held. Release, and your mic comes back. Free & open-source." />
+<meta name="description" content="Hush is a tiny macOS & Windows menu-bar app. Hold the same push-to-talk shortcut you already use for Wispr Flow, and Hush mutes your Discord mic over RPC while it's held. Release, and your mic comes back. Free & open-source." />
 <meta property="og:title" content="Hush — dictate on Discord without broadcasting it" />
-<meta property="og:description" content="A tiny macOS menu-bar app that mutes your Discord mic over RPC while you hold your Wispr Flow push-to-talk shortcut. Free, open-source, MIT." />
+<meta property="og:description" content="A tiny macOS & Windows menu-bar app that mutes your Discord mic over RPC while you hold your Wispr Flow push-to-talk shortcut. Free, open-source, MIT." />
 <meta property="og:type" content="website" />
 <meta property="og:image" content="icon.png" />
 <link rel="icon" href="icon.png" />
@@ -46,7 +46,8 @@
   .gh svg{width:16px;height:16px}
 
   /* hero */
-  header.hero{position:relative;z-index:2;text-align:center;padding:66px 0 30px}
+  header.hero{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;
+    text-align:center;padding:66px 0 30px}
   .hero img.mark{width:100px;height:100px;border-radius:24px;
     box-shadow:0 24px 60px rgba(91,75,214,.4),0 4px 14px rgba(0,0,0,.4);margin-bottom:30px}
   .tag{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:560;color:var(--primary);
@@ -80,7 +81,7 @@
   .btn:hover{background:#9c8fff;transform:translateY(-1px);box-shadow:0 12px 30px rgba(111,95,230,.4)}
   .btn.alt{background:var(--surface2);color:var(--text);border:1px solid var(--border);box-shadow:none}
   .btn.alt:hover{background:#242432;border-color:var(--primary-dim);box-shadow:none}
-  .btn .os-ico{font-size:15px;line-height:1}
+  .btn .os-ico{width:16px;height:16px;display:block;flex:none}
   .dl-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:14px}
   .free{margin-top:20px;font-size:13px;color:var(--muted)}
 
@@ -197,7 +198,7 @@
 
   <header class="hero">
     <img class="mark" src="icon.png" alt="Hush" />
-    <div class="tag"><span class="dot"></span> macOS · free &amp; open-source</div>
+    <div class="tag"><span class="dot"></span> macOS &amp; Windows · free &amp; open-source</div>
     <h1>Dictate on Discord without <span class="hl">broadcasting it</span>.</h1>
     <p class="sub">You already hold a push-to-talk shortcut to dictate with Wispr Flow — but on a Discord call, everyone hears it. Hush watches that <strong>same shortcut</strong> and mutes your Discord mic in parallel while it's held. Release, and your mic comes back.</p>
     <div class="cta">
@@ -210,8 +211,8 @@
       </div>
     </div>
     <div class="dl-row">
-      <a class="btn alt" href="https://github.com/MatthysDev/hush/releases/latest" target="_blank" rel="noopener"><span class="os-ico">🍎</span> macOS&nbsp;(.dmg)</a>
-      <a class="btn alt" href="https://github.com/MatthysDev/hush/releases/latest" target="_blank" rel="noopener"><span class="os-ico">🪟</span> Windows&nbsp;(.exe)</a>
+      <a class="btn alt" href="https://github.com/MatthysDev/hush/releases/download/v0.1.0/Hush-0.1.0-arm64.dmg" download><img class="os-ico" src="mac.png" alt="" width="16" height="16"> macOS&nbsp;(.dmg)</a>
+      <a class="btn alt" href="https://github.com/MatthysDev/hush/releases/download/v0.1.0/Hush-0.1.0-Setup.exe" download><img class="os-ico" src="win.png" alt="" width="16" height="16"> Windows&nbsp;(.exe)</a>
     </div>
     <div class="free">macOS 12+ (Apple Silicon) · Windows 10/11 · MIT · no account · no telemetry</div>
   </header>
@@ -236,7 +237,7 @@
       <div class="card">
         <div class="ico">🔒</div>
         <h3>Local &amp; private</h3>
-        <p>Everything runs on your Mac. No account, no cloud, no telemetry. Open-source under MIT — read every line yourself.</p>
+        <p>Everything runs on your own machine. No account, no cloud, no telemetry. Open-source under MIT — read every line yourself.</p>
       </div>
     </div>
   </div>
