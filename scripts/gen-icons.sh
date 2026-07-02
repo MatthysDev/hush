@@ -21,4 +21,17 @@ for sz in 16 32 128 256 512; do
 done
 iconutil -c icns "$ICO" -o assets/icon.icns
 rm -rf "$ICO"
-echo "Generated assets/icon.icns + assets/generated/*.png"
+
+# Windows .ico (multi-resolution) — needs ImageMagick (`brew install imagemagick`).
+if command -v magick >/dev/null 2>&1; then
+  WIN="$(mktemp -d)"
+  for sz in 16 24 32 48 64 128 256; do
+    rsvg-convert -w $sz -h $sz "$SVG" -o "$WIN/icon-${sz}.png"
+  done
+  magick "$WIN"/icon-16.png "$WIN"/icon-24.png "$WIN"/icon-32.png "$WIN"/icon-48.png \
+         "$WIN"/icon-64.png "$WIN"/icon-128.png "$WIN"/icon-256.png assets/icon.ico
+  rm -rf "$WIN"
+  echo "Generated assets/icon.icns + assets/icon.ico + assets/generated/*.png"
+else
+  echo "Generated assets/icon.icns + assets/generated/*.png (skipped .ico — no ImageMagick)"
+fi

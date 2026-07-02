@@ -12,7 +12,8 @@
     "rebuild": "electron-builder install-app-deps",
     "start": "npm run build && electron .",
     "pack": "npm run build && electron-builder --mac --dir",
-    "dist": "npm run build && electron-builder --mac"
+    "dist": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.6.0",
@@ -59,6 +60,13 @@
     "dmg": {
       "title": "Hush",
       "artifactName": "Hush-${version}-${arch}.dmg"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "Hush-${version}-Setup.exe"
     }
   }
 }
