@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { RemoteDiscordMuter } from '../src/mute-client';
 import { ClientSocket, encode, decode, PROTOCOL_VERSION } from '../src/mute-protocol';
 
@@ -93,5 +93,35 @@ describe('RemoteDiscordMuter', () => {
     expect(sockets[0].closed).toBe(true);
     expect(scheduled.length).toBe(0);
     expect(muter.isConnected()).toBe(false);
+  });
+
+  it('ignores a late welcome from a socket superseded by disconnect()', () => {
+    const { muter, sockets } = connected();
+    muter.disconnect();
+    expect(muter.isConnected()).toBe(false);
+    // A stale message arrives on the now-dead socket after disconnect().
+    sockets[0].fireMessage(encode({ t: 'welcome', v: PROTOCOL_VERSION }));
+    expect(muter.isConnected()).toBe(false);
+    expect(muter.getState()).toBe('disconnected');
+  });
+
+  it('ignores a late close from a socket superseded by a reconnect', async () => {
+    const { muter, sockets, scheduled } = connected();
+    sockets[0].fireClose();                   // link drops → reconnect scheduled
+    expect(scheduled.length).toBe(1);
+    scheduled[0]();                           // run the reconnect → connection #1
+    sockets[1].fireOpen();
+    sockets[1].fireMessage(encode({ t: 'welcome', v: PROTOCOL_VERSION }));
+    expect(muter.isConnected()).toBe(true);
+
+    // A stale close fires on the old, superseded socket #0.
+    sockets[0].fireClose();
+
+    // It must not clobber the live connection or schedule a second reconnect.
+    expect(scheduled.length).toBe(1);
+    expect(muter.isConnected()).toBe(true);
+
+    await muter.setMute(true);
+    expect(sockets[1].lastMsg()).toEqual({ t: 'mute', on: true });
   });
 });

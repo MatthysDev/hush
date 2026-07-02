@@ -1,7 +1,7 @@
 import { DiscordMuter } from './types';
 import { dbg } from './debug';
 import {
-  ClientSocket, ClientSocketFactory, encode, decode, PROTOCOL_VERSION,
+  ClientSocket, ClientSocketFactory, encode, decode, PROTOCOL_VERSION, WireMessage,
 } from './mute-protocol';
 
 export type RemoteState = 'disconnected' | 'connecting' | 'connected';
@@ -45,10 +45,12 @@ export class RemoteDiscordMuter implements DiscordMuter {
     this.sock = sock;
 
     sock.onOpen(() => {
+      if (this.sock !== sock) return;
       sock.send(encode({ t: 'hello', v: PROTOCOL_VERSION, code: this.code }));
     });
     sock.onMessage((raw) => {
-      let msg;
+      if (this.sock !== sock) return;
+      let msg: WireMessage;
       try { msg = decode(raw); } catch { return; }
       if (msg.t === 'welcome') {
         this.state = 'connected';
@@ -66,6 +68,7 @@ export class RemoteDiscordMuter implements DiscordMuter {
       }
     });
     sock.onClose(() => {
+      if (this.sock !== sock) return;
       this.sock = null;
       if (this.state === 'connected') dbg('remote: link dropped');
       this.state = 'disconnected';
