@@ -12,8 +12,8 @@
     "rebuild": "electron-builder install-app-deps",
     "start": "npm run build && electron .",
     "pack": "npm run build && electron-builder --mac --dir",
-    "dist": "npm run build && electron-builder --mac",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist": "npm run build && electron-builder --mac --publish never",
+    "dist:win": "npm run build && electron-builder --win --publish never"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.6.0",
@@ -24,10 +24,12 @@
     "vitest": "^1.6.0"
   },
   "dependencies": {
-    "@nut-tree-fork/node-mac-permissions": "^2.2.1",
     "discord-rpc": "^4.0.1",
     "electron-store": "^8.2.0",
     "uiohook-napi": "^1.5.4"
+  },
+  "optionalDependencies": {
+    "@nut-tree-fork/node-mac-permissions": "^2.2.1"
   },
   "build": {
     "appId": "com.hush.app",
