@@ -1,29 +1,49 @@
-import { HushConfig, SynthEngine } from './types';
+import { DiscordMuter, HushConfig } from './types';
 import { dbg } from './debug';
 
 const realSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+// Hush's whole job: while you hold your push-to-talk shortcut (which Wispr
+// listens to natively), mute your Discord mic — and unmute on release. It never
+// touches Wispr; it only drives the Discord RPC mute.
 export class Orchestrator {
   private active = false;
+  // Presses/releases fire from the global hook as fire-and-forget callbacks, and
+  // each mute/unmute is async (an RPC round-trip). Serialize them through this
+  // tail so a release can't overtake the mute it's meant to undo.
+  private queue: Promise<void> = Promise.resolve();
 
   constructor(
-    private readonly synth: SynthEngine,
+    private readonly discord: DiscordMuter,
     private readonly cfg: HushConfig,
     private readonly onActiveChange?: (active: boolean) => void,
     private readonly sleep: (ms: number) => Promise<void> = realSleep,
   ) {}
 
+  // Chain a transition onto the queue; keep the chain alive even if one throws so
+  // a single failed transition can't wedge every later press/release.
+  private enqueue(task: () => Promise<void>): Promise<void> {
+    const next = this.queue.then(task, task);
+    this.queue = next.catch(() => {});
+    return next;
+  }
+
   async onPress(): Promise<void> {
-    if (this.cfg.mode === 'hold') return this.activate();
-    return this.active ? this.deactivate() : this.activate();
+    return this.enqueue(() =>
+      this.cfg.mode === 'hold'
+        ? this.activate()
+        : this.active
+          ? this.deactivate()
+          : this.activate(),
+    );
   }
 
   async onRelease(): Promise<void> {
-    if (this.cfg.mode === 'hold') return this.deactivate();
+    return this.enqueue(() => (this.cfg.mode === 'hold' ? this.deactivate() : Promise.resolve()));
   }
 
   async forceRelease(): Promise<void> {
-    if (this.active) return this.deactivate();
+    return this.enqueue(() => (this.active ? this.deactivate() : Promise.resolve()));
   }
 
   isActive(): boolean {
@@ -35,37 +55,18 @@ export class Orchestrator {
     this.onActiveChange?.(value);
   }
 
-  // A trigger that carries modifiers (e.g. the modifier-only ⌃⌥⇧, or ⌃⌥D) is
-  // physically held while we inject. Those held modifiers leak into every
-  // synthesized chord — Discord would see ⌃⌥⇧⌘X instead of ⌘⌥X and never match,
-  // and the focused app gets stray accords (the "ça ferme mes fenêtres" bug).
-  // Synth-releasing the trigger modifiers first neutralizes them at the OS level
-  // (the physical key stays down but won't re-emit until released), so the combos
-  // we inject land clean. No-op when the trigger has no modifiers (e.g. F13).
-  private async maskTriggerMods(): Promise<void> {
-    if (this.cfg.trigger.mods.length === 0) return;
-    await this.synth.holdUp({ mods: this.cfg.trigger.mods, key: '' });
-  }
-
   private async activate(): Promise<void> {
     if (this.active) return;
-    dbg('orchestrator: activate (mute + dictate)');
+    dbg('orchestrator: activate (mute)');
     this.setActive(true);
-    await this.maskTriggerMods();                     // clear held trigger modifiers
-    await this.synth.tapCombo(this.cfg.discordCombo); // mute Discord
-    // Let Discord's hotkey land before firing Wispr's — sequencing avoids the OS
-    // coalescing two simultaneous global shortcuts and dropping the mute.
-    if (this.cfg.muteDictateGapMs > 0) await this.sleep(this.cfg.muteDictateGapMs);
-    await this.synth.holdDown(this.cfg.wisprCombo);   // start Wispr dictation
+    await this.discord.setMute(true);
   }
 
   private async deactivate(): Promise<void> {
     if (!this.active) return;
-    dbg('orchestrator: deactivate (stop dictate + unmute)');
+    dbg('orchestrator: deactivate (unmute)');
     this.setActive(false);
-    await this.maskTriggerMods();                     // toggle re-press: clear them again
-    await this.synth.holdUp(this.cfg.wisprCombo);     // stop Wispr dictation
     if (this.cfg.unmuteDelayMs > 0) await this.sleep(this.cfg.unmuteDelayMs);
-    await this.synth.tapCombo(this.cfg.discordCombo); // unmute Discord
+    await this.discord.setMute(false);
   }
 }

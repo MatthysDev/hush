@@ -8,20 +8,10 @@ const bridge = {
   captureCombo: () => ipcRenderer.invoke('capture:combo'),
   openAccessibility: () => ipcRenderer.send('perm:open-accessibility'),
   openInputMonitoring: () => ipcRenderer.send('perm:open-input'),
+  openExternal: (url: string) => ipcRenderer.send('app:open-external', url),
   quit: () => ipcRenderer.send('app:quit'),
   onStatus: (cb: (s: unknown) => void) => ipcRenderer.on('status', (_e, s) => cb(s)),
-  openTestBench: () => ipcRenderer.send('testbench:open'),
-  test: {
-    discordCombo: () => ipcRenderer.invoke('test:discordCombo'),
-    rpcConnect: (id: string, secret: string) => ipcRenderer.invoke('test:rpc:connect', id, secret),
-    rpcSetMute: (mute: boolean) => ipcRenderer.invoke('test:rpc:setMute', mute),
-    rpcDisconnect: () => ipcRenderer.invoke('test:rpc:disconnect'),
-    hidTap: () => ipcRenderer.invoke('test:hid:tap'),
-    axToggle: () => ipcRenderer.invoke('test:ax:toggle'),
-    axDump: () => ipcRenderer.invoke('test:ax:dump'),
-    audioDetect: () => ipcRenderer.invoke('test:audio:detect'),
-    audioDegradedMute: (mute: boolean) => ipcRenderer.invoke('test:audio:degradedMute', mute),
-  },
+  reconnectRpc: () => ipcRenderer.invoke('rpc:reconnect'),
 };
 
 contextBridge.exposeInMainWorld('hush', bridge);

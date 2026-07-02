@@ -1,63 +1,126 @@
-# Hush
+<p align="center">
+  <img src="assets/generated/icon-256.png" width="112" height="112" alt="Hush" />
+</p>
 
-> Push-to-talk bridge for macOS — mute Discord while you dictate with Wispr Flow.
+<h1 align="center">Hush</h1>
 
-Hush is a tiny menu-bar (tray) Electron app. Hold one key and it **mutes Discord**
-and **starts Wispr Flow dictation** in a single gesture; release it and it **stops
-dictation** and **unmutes Discord**. No more broadcasting your dictation to a whole
-Discord call.
+<p align="center"><strong>Mute Discord while you dictate with Wispr Flow.</strong></p>
 
+<p align="center">
+  <a href="https://matthysdev.github.io/hush/">Website</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="https://github.com/MatthysDev/hush/releases">Releases</a>
+</p>
+
+---
+
+Hush is a tiny macOS menu-bar app. You already hold a push-to-talk shortcut to
+dictate with **Wispr Flow** — but on a Discord call, everyone hears you. Hush
+watches that **same shortcut** and **mutes your Discord mic** while it's held;
+release it and your mic comes back. No more broadcasting your dictation to a
+whole call.
+
+- **Mutes Discord over RPC**, not a fake keystroke — the approach that actually works.
+- **One shortcut — the one you already use.** Hush never simulates keys: you press
+  your Wispr shortcut yourself, Hush just mutes Discord alongside it.
+- **Menu-bar only** (`LSUIElement`), local & private, MIT-licensed.
 - **Modes** — `hold` (push-to-talk) or `toggle`.
-- **Fully configurable hotkeys** — trigger, Discord mute combo, Wispr combo, all
-  captured live from a settings window and checked for conflicts.
-- **Menu-bar only** — no dock icon (`LSUIElement`), a tray icon that flips between
-  a *safe* (muted) and *live* (mic open) state.
 
-## Why it's trickier than it looks
+## Install
 
-Hush synthesizes global hotkeys with `@nut-tree-fork/nut-js` and listens to the
-keyboard globally with `uiohook-napi`. Those two facts fight each other, and most
-of the code is about winning that fight cleanly:
+```bash
+brew install --cask matthysdev/hush/hush
+```
 
-- **Self-observation loop** (`synth-guard.ts`) — uIOhook sees the very keys nut-js
-  injects. A modifier-only trigger would read its own synthetic Discord combo as
-  "the trigger changed" and flap mute on/off forever. `SynthGuard` marks the
-  injection window (with a grace period for delivery lag) so self-generated events
-  are dropped.
-- **Modifier leakage** (`orchestrator.ts` → `maskTriggerMods`) — a trigger with
-  modifiers is physically held while we inject, so those modifiers leak into every
-  synthesized chord (Discord sees `⌃⌥⇧⌘X` instead of `⌘⌥X` and never matches).
-  Synth-releasing the trigger modifiers first neutralizes them at the OS level.
-- **Hotkey coalescing** (`muteDictateGapMs`) — firing two global shortcuts in the
-  same instant lets the OS coalesce them and drop one. Hush sequences them with a
-  small gap so both land.
+> ⚠️ Hush isn't notarized by Apple (free & open-source). The cask clears the
+> quarantine flag for you; if macOS still complains, right-click the app →
+> **Open**, or run `xattr -dr com.apple.quarantine /Applications/Hush.app`.
+
+You'll need **Discord** (desktop) and **Wispr Flow** for the full bridge.
+
+> **Windows?** Not yet. The core (global key detection, Discord RPC) is portable,
+> but everything around it is macOS-specific today — TCC permissions, the menu-bar
+> integration, the `.dmg`/Homebrew packaging. A Windows port is possible but is a
+> separate piece of work.
+
+## Setup
+
+1. **Permission** — grant **Input Monitoring** (and Accessibility if prompted) so
+   Hush can see when your shortcut is held. The settings window links straight to
+   the right System Settings pane. That's the only thing Hush watches.
+2. **Connect Discord** — Hush mutes Discord through its local RPC socket, which
+   needs a free Discord app:
+   - Go to <https://discord.com/developers/applications> → **New Application**.
+   - **OAuth2** → copy the **Client ID** and a **Client Secret**.
+   - **OAuth2 → Redirects** → add `http://localhost` → **Save Changes**.
+     *(Required — without it the connection fails with "Missing redirect_uri".)*
+   - Paste the Client ID & Secret into Hush → **Connect**. Approve the popup in
+     Discord.
+3. **Set your shortcut** — enter the **exact same** push-to-talk shortcut you use in
+   Wispr Flow (Wispr → Settings → General → Shortcuts). Hush mirrors it and mutes
+   Discord whenever it's held.
+
+The built-in onboarding tutorial walks you through all of this on first launch.
+
+## How it works
+
+Hush's one job: **while you hold your push-to-talk shortcut, mute your Discord mic;
+unmute on release.** You keep pressing the shortcut yourself — Wispr Flow responds
+to it natively — and Hush runs in parallel.
+
+Two facts shape the design:
+
+- **Discord ignores synthesized keystrokes.** Every "just press Discord's mute
+  hotkey for the user" approach fails, because Discord honors a real keypress but
+  drops injected ones. So Hush skips keystrokes entirely and calls
+  `SET_VOICE_SETTINGS { mute }` over Discord's own RPC/IPC socket — the mute lands
+  every time.
+- **Wispr already listens for your shortcut.** There's no reason for Hush to
+  re-send it. Hush just needs to *know* when you're holding it, which it reads from
+  a global keyboard listener (`uiohook-napi`) — no key injection anywhere.
+
+That's the whole trick: **detect the shortcut, mute Discord over RPC.** Because
+nothing is synthesized, there are no leaked modifiers, no self-observation loops,
+and no keystrokes for anything to ignore.
 
 ## Architecture
 
 ```
 src/
 ├── main.ts          # Electron entry: tray, settings window, IPC, permissions, wiring
-├── orchestrator.ts  # The state machine: press/release → mute + dictate / stop + unmute
-├── input-engine.ts  # uiohook-napi global keyboard listener → trigger detection
-├── synth-engine.ts  # nut-js keystroke synthesis (tap / hold down / hold up)
-├── synth-guard.ts   # Drops self-generated key events (breaks the observation loop)
-├── synth-map.ts     # Combo → nut-js Key mapping
-├── combo.ts         # Combo normalization, equality, distinctness, display labels
+├── orchestrator.ts  # State machine: shortcut down → mute Discord / up → unmute (serialized)
+├── discord-mute.ts  # Discord muting over RPC (SET_VOICE_SETTINGS) — best-effort
+├── input-engine.ts  # uiohook-napi global keyboard listener → shortcut detection
+├── combo.ts         # Combo normalization, equality, display labels
 ├── config.ts        # Defaults + validation
-├── store.ts         # Persisted config (electron-store)
+├── store.ts         # Persisted config (electron-store) + migration from old configs
 ├── brand.ts         # Name, taglines, color palette
 ├── debug.ts         # Opt-in debug logging
 ├── preload.ts       # contextBridge IPC surface for the settings window
-└── types.ts         # Shared types (Combo, Mode, HushConfig, engine interfaces)
+└── types.ts         # Shared types (Combo, Mode, HushConfig, DiscordMuter, …)
 
-renderer/            # Settings window (plain HTML/CSS/JS)
-tests/               # vitest unit tests (orchestrator, synth, combo, config)
-assets/              # Tray icons (template PNGs + SVGs)
+renderer/            # Settings window + onboarding tutorial (plain HTML/CSS/JS)
+tests/               # vitest unit tests (orchestrator, discord-mute, trigger-detector, config)
+assets/              # Icons (SVG source + generated PNGs + tray templates)
+docs/                # Landing page (GitHub Pages)
+Casks/hush.rb        # Homebrew cask (publish to the MatthysDev/homebrew-hush tap)
 ```
 
-The core logic is fully unit-tested against fake engines — the `Orchestrator`,
-`SynthGuard`, `synth-map` and combo/config helpers all have deterministic tests
-(no OS, no real keyboard).
+The core logic is unit-tested against fakes — the `Orchestrator`, `DiscordRpcMuter`,
+`TriggerDetector` and combo/config helpers all have deterministic tests (no OS, no
+real keyboard, no Discord).
+
+## Config
+
+Defaults live in `src/config.ts` and are persisted via `electron-store`:
+
+| Setting         | Default | Meaning                                              |
+| --------------- | ------- | ---------------------------------------------------- |
+| `shortcut`      | `⌃⌥`    | Your push-to-talk shortcut (same as in Wispr Flow)   |
+| `discordRpc`    | `{ }`   | Discord app Client ID & Secret (for RPC)             |
+| `mode`          | `hold`  | `hold` (push-to-talk) or `toggle`                    |
+| `unmuteDelayMs` | `0`     | Delay before unmuting Discord on release             |
 
 ## Develop
 
@@ -66,45 +129,23 @@ npm install
 npm run build       # tsc → dist/
 npm test            # vitest
 npm start           # build + launch Electron
-npm run dist        # build a signed-less .dmg (electron-builder)
+npm run dist        # build an (unsigned) .dmg via electron-builder
 ```
 
-macOS grants are required at first launch: **Accessibility** and **Input
-Monitoring** (the settings window links straight to the right System Settings
-panes).
+Prefer `scripts/install-local.sh` over `npm start` for day-to-day use: it signs
+with a stable Apple Development identity and installs into `/Applications`, so the
+macOS TCC grants (Input Monitoring / Accessibility) survive rebuilds.
 
-## Config
+## Release & Homebrew
 
-Defaults live in `src/config.ts` and are persisted via `electron-store`:
+1. `git tag v0.1.0 && git push --tags` → the **Release** workflow builds the DMG and
+   attaches it (plus its SHA-256) to a GitHub Release.
+2. Copy the printed `sha256` into `Casks/hush.rb`, bump `version`, and push the cask
+   to your tap repo **`MatthysDev/homebrew-hush`** (`Casks/hush.rb`).
+3. Users install with `brew install --cask matthysdev/hush/hush`.
 
-| Setting            | Default        | Meaning                                   |
-| ------------------ | -------------- | ----------------------------------------- |
-| `trigger`          | `F13`          | The push-to-talk / toggle key             |
-| `discordCombo`     | `⌃⌥⌘1`         | Discord's "toggle mute" shortcut          |
-| `wisprCombo`       | `⌃⌥⌘2`         | Wispr Flow's dictation shortcut           |
-| `mode`             | `hold`         | `hold` (push-to-talk) or `toggle`         |
-| `muteDictateGapMs` | `25`           | Gap between muting Discord and dictating  |
-| `unmuteDelayMs`    | `0`            | Delay before unmuting on release          |
-
-## Test Bench — experiments to actually mute Discord
-
-Hush's original premise failed on one fact: **Discord honors a real keypress but
-ignores a synthesized one**, so injecting its mute hotkey never worked. The Test
-Bench is a throwaway window (tray menu → **Ouvrir le Test Bench…**) to try four
-alternatives live on a real Discord call and see which one works. All of it is
-isolated in `src/experiments/` + `native/` and touches nothing in the push-to-talk
-engine.
-
-| Tab | Approach | What you need |
-|---|---|---|
-| **A — Discord RPC** | Connect to Discord's local IPC socket and call `SET_VOICE_SETTINGS { mute }` — no keystroke at all. | A Discord app `client_id` + `client_secret` ([dev portal](https://discord.com/developers/applications), redirect `http://localhost`). Needs the `rpc.voice.write` scope, which Discord whitelists — the console tells you if it's refused. |
-| **B — HID keystroke** | Post the mute combo at the **HID event tap** (`native/hush-hid.swift`) so it looks like real hardware, not the session-level CGEvent nut-js sends. | Grant `hush-hid` **Accessibility** on first run. Uses the Discord combo configured in Hush. |
-| **C — Accessibility** | Press Discord's mute **button** through the AX tree (`native/hush-ax.swift`) — like VoiceOver. | Grant `hush-ax` **Accessibility**; Discord open. `Lister les boutons` dumps the AX labels for debugging. |
-| **D — Audio device** | Detect a virtual audio device (BlackHole/Loopback) to isolate Discord's input from Wispr's mic. Ships a *degraded* system-input mute as a fallback. | `brew install blackhole-2ch` for the real thing; the degraded test mutes Wispr too (by design). |
-
-The Swift helpers are compiled on first use to `native/bin/` (a stable path so the
-macOS Accessibility grant sticks). Run the bench with `npm start` → tray → Test
-Bench. Winner(s) get wired into the real flow afterwards.
+The website lives in `docs/` and is served by GitHub Pages
+(Settings → Pages → *main /docs*).
 
 ## License
 

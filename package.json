@@ -23,7 +23,7 @@
     "vitest": "^1.6.0"
   },
   "dependencies": {
-    "@nut-tree-fork/nut-js": "^4.2.0",
+    "@nut-tree-fork/node-mac-permissions": "^2.2.1",
     "discord-rpc": "^4.0.1",
     "electron-store": "^8.2.0",
     "uiohook-napi": "^1.5.4"
@@ -39,28 +39,26 @@
       "dist/**/*",
       "renderer/**/*",
       "assets/**/*",
-      "native/**/*",
       "package.json"
     ],
     "asarUnpack": [
       "**/*.node",
-      "node_modules/uiohook-napi/**",
-      "node_modules/@nut-tree-fork/**"
+      "node_modules/uiohook-napi/**"
     ],
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
         "dmg"
       ],
-      "icon": "build/icon.icns",
+      "icon": "assets/icon.icns",
       "identity": null,
       "extendInfo": {
-        "LSUIElement": true,
-        "NSAppleEventsUsageDescription": "Hush sends keystrokes to mute Discord and trigger Wispr Flow."
+        "LSUIElement": true
       }
     },
     "dmg": {
-      "title": "Hush"
+      "title": "Hush",
+      "artifactName": "Hush-${version}-${arch}.dmg"
     }
   }
 }

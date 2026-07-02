@@ -1,23 +1,35 @@
 import { describe, it, expect } from 'vitest';
 import { getConfig, DEFAULT_CONFIG, validateConfig } from '../src/config';
-import { combosDistinct } from '../src/combo';
 
 describe('getConfig', () => {
-  it('returns a config whose three combos are distinct', () => {
+  it('defaults to a non-empty push-to-talk shortcut', () => {
     const cfg = getConfig();
-    expect(combosDistinct([cfg.trigger, cfg.discordCombo, cfg.wisprCombo])).toBe(true);
+    expect(cfg.shortcut.mods.length > 0 || cfg.shortcut.key).toBeTruthy();
   });
-  it('defaults to hold mode with no unmute delay', () => {
+  it('defaults to hold mode with no unmute delay and empty RPC credentials', () => {
     expect(DEFAULT_CONFIG.mode).toBe('hold');
     expect(DEFAULT_CONFIG.unmuteDelayMs).toBe(0);
+    expect(DEFAULT_CONFIG.discordRpc).toEqual({ clientId: '', clientSecret: '' });
   });
 });
 
 describe('validateConfig', () => {
-  it('throws when two combos collide', () => {
+  it('accepts a modifier-only shortcut (e.g. ⌃⌥)', () => {
     expect(() => validateConfig({
       ...DEFAULT_CONFIG,
-      discordCombo: { mods: [], key: 'F13' }, // same as trigger
-    })).toThrow(/distinct/);
+      shortcut: { mods: ['ctrl', 'alt'], key: '' },
+    })).not.toThrow();
+  });
+  it('accepts a key + modifier shortcut (e.g. ⌘2)', () => {
+    expect(() => validateConfig({
+      ...DEFAULT_CONFIG,
+      shortcut: { mods: ['cmd'], key: '2' },
+    })).not.toThrow();
+  });
+  it('throws when the shortcut is empty (no key and no modifier)', () => {
+    expect(() => validateConfig({
+      ...DEFAULT_CONFIG,
+      shortcut: { mods: [], key: '' },
+    })).toThrow(/shortcut must have/);
   });
 });

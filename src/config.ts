@@ -1,31 +1,21 @@
 import { HushConfig } from './types';
-import { combosDistinct } from './combo';
 
 export const DEFAULT_CONFIG: HushConfig = {
-  // If your keyboard has no F13, change to { mods: ['ctrl', 'alt', 'cmd'], key: 'D' }
-  // (or set it from the Hush settings window).
-  trigger: { mods: [], key: 'F13' },
-  discordCombo: { mods: ['ctrl', 'alt', 'cmd'], key: '1' },
-  wisprCombo: { mods: ['ctrl', 'alt', 'cmd'], key: '2' },
+  // Your Wispr Flow push-to-talk shortcut. You press it yourself (Wispr dictates
+  // natively); Hush only watches for it and mutes Discord while it's held. ⌃⌥ is
+  // Wispr's documented push-to-talk default for external keyboards — set the SAME
+  // combo here and in Wispr → Settings → General → Shortcuts.
+  shortcut: { mods: ['ctrl', 'alt'], key: '' },
+  discordRpc: { clientId: '', clientSecret: '' },
   mode: 'hold',
-  muteDictateGapMs: 25,
   unmuteDelayMs: 0,
 };
 
 export function validateConfig(cfg: HushConfig): void {
-  // Discord/Wispr are SYNTHESIZED hotkeys — they need a real key. A modifier-only
-  // combo (key: '') just taps ⌃⌥⌘ and does nothing, which is exactly how the
-  // "Discord ne se mute jamais" bug slipped in (capture finalized on an early
-  // modifier release, losing the key). The trigger may be modifier-only; these
-  // two may not.
-  if (!cfg.discordCombo.key) {
-    throw new Error('Hush config invalid: discordCombo must include a key (e.g. ⌘⌥X), not modifiers only');
-  }
-  if (!cfg.wisprCombo.key) {
-    throw new Error('Hush config invalid: wisprCombo must include a key (e.g. ⌃⌥Z), not modifiers only');
-  }
-  if (!combosDistinct([cfg.trigger, cfg.discordCombo, cfg.wisprCombo])) {
-    throw new Error('Hush config invalid: trigger, discordCombo and wisprCombo must all be distinct');
+  // The shortcut must be *something* — at least one modifier or a key. An empty
+  // combo would fire constantly (or never) and can't be a real push-to-talk.
+  if (cfg.shortcut.mods.length === 0 && !cfg.shortcut.key) {
+    throw new Error('Hush config invalid: shortcut must have at least a key or a modifier');
   }
 }
 

@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hush — dictate on Discord without broadcasting it</title>
+<meta name="description" content="Hush is a tiny macOS menu-bar app. Hold the same push-to-talk shortcut you already use for Wispr Flow, and Hush mutes your Discord mic over RPC while it's held. Release, and your mic comes back. Free & open-source." />
+<meta property="og:title" content="Hush — dictate on Discord without broadcasting it" />
+<meta property="og:description" content="A tiny macOS menu-bar app that mutes your Discord mic over RPC while you hold your Wispr Flow push-to-talk shortcut. Free, open-source, MIT." />
+<meta property="og:type" content="website" />
+<meta property="og:image" content="icon.png" />
+<link rel="icon" href="icon.png" />
+<style>
+  :root{
+    --bg:#0F0F14; --bg-deep:#0B0B10; --surface:#16161F; --surface2:#1F1F2B;
+    --border:#282838; --text:#ECECF1; --muted:#9A9AA8;
+    --primary:#8B7CFF; --primary-dim:#6F5FE6; --mint:#54E6C0; --live:#FF5C7A;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);color:var(--text);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden;
+  }
+  a{color:inherit}
+  ::selection{background:rgba(139,124,255,.3)}
+
+  .wrap{max-width:1000px;margin:0 auto;padding:0 24px}
+  .glow{position:absolute;top:-260px;left:50%;transform:translateX(-50%);
+    width:min(1100px,120vw);height:820px;pointer-events:none;z-index:0;
+    background:radial-gradient(closest-side,rgba(139,124,255,.20),rgba(139,124,255,.05) 55%,transparent 72%)}
+
+  /* nav */
+  nav{position:relative;z-index:3;display:flex;align-items:center;justify-content:space-between;
+    height:72px;gap:16px}
+  .brand{display:flex;align-items:center;gap:11px;font-weight:680;font-size:17px;letter-spacing:-.2px}
+  .brand img{width:32px;height:32px;border-radius:8px;box-shadow:0 4px 14px rgba(91,75,214,.35)}
+  .nav-links{display:flex;gap:24px;align-items:center;font-size:14px;color:var(--muted)}
+  .nav-links a{text-decoration:none;transition:color .15s ease}
+  .nav-links a:not(.gh):hover{color:var(--text)}
+  .gh{display:inline-flex;align-items:center;gap:7px;background:var(--surface2);
+    border:1px solid var(--border);padding:8px 15px;border-radius:10px;color:var(--text);
+    text-decoration:none;font-weight:560;transition:border-color .15s ease,transform .15s ease}
+  .gh:hover{border-color:var(--primary-dim);transform:translateY(-1px)}
+  .gh svg{width:16px;height:16px}
+
+  /* hero */
+  header.hero{position:relative;z-index:2;text-align:center;padding:66px 0 30px}
+  .hero img.mark{width:100px;height:100px;border-radius:24px;
+    box-shadow:0 24px 60px rgba(91,75,214,.4),0 4px 14px rgba(0,0,0,.4);margin-bottom:30px}
+  .tag{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:560;color:var(--primary);
+    background:rgba(139,124,255,.1);border:1px solid rgba(139,124,255,.28);
+    padding:6px 14px;border-radius:999px;margin-bottom:24px}
+  .tag .dot{width:6px;height:6px;border-radius:50%;background:var(--mint);box-shadow:0 0 8px var(--mint)}
+  h1{font-size:clamp(36px,6.2vw,62px);line-height:1.04;letter-spacing:-1.6px;font-weight:730;
+    margin-bottom:20px;max-width:14ch;margin-inline:auto}
+  h1 .hl{background:linear-gradient(120deg,#A99BFF,#8B7CFF 55%,#6F5FE6);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{font-size:19px;line-height:1.55;color:var(--muted);max-width:620px;margin:0 auto 34px}
+  .sub strong{color:var(--text);font-weight:560}
+  .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;align-items:stretch}
+  .install{display:inline-flex;align-items:center;gap:12px;background:var(--bg-deep);
+    border:1px solid var(--border);border-radius:12px;padding:0 8px 0 16px;height:52px;
+    font-family:'SF Mono',ui-monospace,Menlo,monospace;font-size:14px;max-width:100%}
+  .install .scroller{display:flex;align-items:center;gap:10px;overflow-x:auto;
+    scrollbar-width:none;white-space:nowrap}
+  .install .scroller::-webkit-scrollbar{display:none}
+  .install .dollar{color:var(--primary);user-select:none}
+  .install code{color:var(--text)}
+  .copy{flex:none;background:var(--surface2);border:1px solid var(--border);color:var(--muted);
+    border-radius:8px;padding:7px 12px;font:inherit;font-size:12px;cursor:pointer;
+    transition:color .15s ease,border-color .15s ease}
+  .copy:hover{color:var(--text);border-color:var(--primary-dim)}
+  .copy.done{color:var(--mint);border-color:rgba(84,230,192,.4)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--primary);
+    color:#141021;font-weight:640;text-decoration:none;padding:0 24px;height:52px;border-radius:12px;
+    font-size:15px;transition:background .15s ease,transform .15s ease,box-shadow .15s ease;
+    box-shadow:0 8px 24px rgba(111,95,230,.28)}
+  .btn:hover{background:#9c8fff;transform:translateY(-1px);box-shadow:0 12px 30px rgba(111,95,230,.4)}
+  .free{margin-top:20px;font-size:13px;color:var(--muted)}
+
+  /* sections */
+  section{position:relative;z-index:1;padding:64px 0;border-top:1px solid transparent}
+  .kicker{color:var(--primary);font-weight:620;font-size:13px;letter-spacing:.5px;
+    text-transform:uppercase;margin-bottom:12px}
+  h2{font-size:clamp(26px,4vw,36px);letter-spacing:-.7px;line-height:1.1;font-weight:690;margin-bottom:14px}
+  .lead{color:var(--muted);font-size:17px;line-height:1.6;max-width:640px}
+
+  /* feature grid */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:38px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:24px;
+    display:flex;flex-direction:column;transition:border-color .18s ease,transform .18s ease,background .18s ease}
+  .card:hover{border-color:var(--primary-dim);transform:translateY(-3px);background:#181822}
+  .card .ico{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:21px;
+    background:var(--surface2);border:1px solid var(--border);margin-bottom:16px}
+  .card h3{font-size:17px;font-weight:640;margin-bottom:8px;letter-spacing:-.2px}
+  .card p{color:var(--muted);font-size:14.5px;line-height:1.55}
+
+  /* steps */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:38px;counter-reset:s}
+  .step{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:24px;
+    position:relative;display:flex;flex-direction:column}
+  .step .num{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
+    background:rgba(139,124,255,.12);border:1px solid rgba(139,124,255,.3);color:var(--primary);
+    font-weight:700;font-size:15px;margin-bottom:16px}
+  .step h3{font-size:16px;margin-bottom:8px;font-weight:640;letter-spacing:-.2px}
+  .step p{color:var(--muted);font-size:14px;line-height:1.55}
+  code.inline{background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;padding:1px 6px;
+    font-family:'SF Mono',ui-monospace,monospace;font-size:12.5px;color:var(--primary);
+    white-space:nowrap}
+
+  /* why callout */
+  .why{position:relative;background:linear-gradient(155deg,#191926,var(--bg-deep));
+    border:1px solid var(--border);border-radius:22px;padding:40px 36px;margin-top:14px;overflow:hidden}
+  .why::before{content:"";position:absolute;top:-40%;right:-10%;width:420px;height:420px;
+    background:radial-gradient(closest-side,rgba(84,230,192,.12),transparent);pointer-events:none}
+  .why .kicker{color:var(--mint)}
+  .why p{position:relative;color:var(--muted);font-size:16.5px;line-height:1.65;max-width:740px}
+  .why strong{color:var(--text);font-weight:600}
+  .why .chip{display:inline-block;font-family:'SF Mono',ui-monospace,monospace;font-size:13px;color:var(--mint);
+    background:rgba(84,230,192,.1);border:1px solid rgba(84,230,192,.28);padding:2px 9px;border-radius:6px;
+    white-space:nowrap}
+
+  /* install block */
+  .install-lg{margin-top:28px;height:auto;padding:14px 8px 14px 18px}
+  .note{display:flex;gap:12px;background:rgba(255,92,122,.06);border:1px solid rgba(255,92,122,.28);
+    border-radius:14px;padding:16px 18px;margin-top:22px;font-size:14.5px;line-height:1.6;color:#f2b8c2}
+  .note .ni{flex:none;font-size:16px;line-height:1.5}
+  .note strong{color:#ffd2db;font-weight:600}
+  .note code{background:var(--bg-deep);border:1px solid rgba(255,92,122,.3);border-radius:6px;padding:1px 6px;
+    font-family:'SF Mono',ui-monospace,monospace;font-size:12.5px;color:#ffd2db;white-space:nowrap}
+  .req{margin-top:16px;font-size:13.5px;color:var(--muted)}
+  .req b{color:var(--text);font-weight:560}
+
+  footer{position:relative;z-index:1;border-top:1px solid var(--border);margin-top:56px;padding:32px 0 64px;
+    color:var(--muted);font-size:14px;display:flex;justify-content:space-between;align-items:center;
+    flex-wrap:wrap;gap:14px}
+  footer .links{display:flex;gap:8px;align-items:center}
+  footer a{color:var(--muted);text-decoration:none;transition:color .15s ease}
+  footer a:hover{color:var(--text)}
+  footer .sep{opacity:.4}
+
+  @media(max-width:720px){
+    section{padding:52px 0}
+    .grid,.steps{grid-template-columns:1fr}
+    .nav-links a:not(.gh){display:none}
+    .cta{flex-direction:column;align-items:stretch}
+    .install,.btn{width:100%}
+    .btn{justify-content:center}
+    .why{padding:30px 22px}
+    footer{flex-direction:column;align-items:flex-start}
+  }
+</style>
+</head>
+<body>
+<div class="glow"></div>
+
+<div class="wrap">
+  <nav>
+    <div class="brand"><img src="icon.png" alt="Hush logo" /> Hush</div>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#install">Install</a>
+      <a class="gh" href="https://github.com/MatthysDev/hush" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <img class="mark" src="icon.png" alt="Hush" />
+    <div class="tag"><span class="dot"></span> macOS · free &amp; open-source</div>
+    <h1>Dictate on Discord without <span class="hl">broadcasting it</span>.</h1>
+    <p class="sub">You already hold a push-to-talk shortcut to dictate with Wispr Flow — but on a Discord call, everyone hears it. Hush watches that <strong>same shortcut</strong> and mutes your Discord mic in parallel while it's held. Release, and your mic comes back.</p>
+    <div class="cta">
+      <div class="install">
+        <div class="scroller">
+          <span class="dollar">$</span>
+          <code id="cmd">brew install --cask matthysdev/hush/hush</code>
+        </div>
+        <button class="copy" id="copyBtn">Copy</button>
+      </div>
+      <a class="btn" href="https://github.com/MatthysDev/hush/releases" target="_blank" rel="noopener">Download ↓</a>
+    </div>
+    <div class="free">MIT licensed · no account · no cloud · no telemetry</div>
+  </header>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <div class="kicker">Why Hush</div>
+    <h2>Dictation, minus the broadcast.</h2>
+    <p class="lead">Wispr Flow listens to your mic while you hold your shortcut. In a Discord call, so does everyone else. Hush closes that gap — no extra keys to press, nothing simulated.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="ico">🎙️</div>
+        <h3>Mutes Discord over RPC</h3>
+        <p>Hush talks to Discord's local RPC socket and calls <code class="inline">SET_VOICE_SETTINGS</code> — the reliable path. No fake mute hotkeys that Discord silently ignores.</p>
+      </div>
+      <div class="card">
+        <div class="ico">⌨️</div>
+        <h3>The shortcut you already use</h3>
+        <p>Point Hush at your Wispr Flow push-to-talk shortcut. It mutes Discord while you hold it and unmutes on release — zero synthesized keystrokes.</p>
+      </div>
+      <div class="card">
+        <div class="ico">🔒</div>
+        <h3>Local &amp; private</h3>
+        <p>Everything runs on your Mac. No account, no cloud, no telemetry. Open-source under MIT — read every line yourself.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <div class="kicker">How it works</div>
+    <h2>Three steps, then it lives in your menu bar.</h2>
+    <p class="lead">Hush never presses keys for you. You press your own shortcut like always — Hush just mutes Discord alongside it.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <h3>Grant macOS permission</h3>
+        <p>Allow <b>Input Monitoring</b> / <b>Accessibility</b> so Hush can see when your shortcut is being held. That's the only thing it watches.</p>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <h3>Connect Discord</h3>
+        <p>Create a free Discord app, paste the Client ID &amp; Secret, and add the <code class="inline">http://localhost</code> OAuth2 redirect — required, or you'll hit <em>“Missing redirect_uri”</em>.</p>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <h3>Set your shortcut</h3>
+        <p>Enter the exact same push-to-talk shortcut you use in Wispr Flow. Done — Hush mirrors it and mutes Discord whenever it's held.</p>
+      </div>
+    </div>
+
+    <div class="why" id="why">
+      <div class="kicker">Why it works this way</div>
+      <p><strong>Discord honors a real keypress but ignores synthesized ones.</strong> Every “just press Discord's mute hotkey for the user” trick fails because Discord drops injected keystrokes. So Hush skips keystrokes entirely and calls <span class="chip">SET_VOICE_SETTINGS { mute }</span> over Discord's own RPC socket — and the mute lands every single time.</p>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <div class="kicker">Install</div>
+    <h2>Homebrew, one line.</h2>
+    <p class="lead">Grab it from the tap and you're set.</p>
+    <div class="install install-lg">
+      <div class="scroller">
+        <span class="dollar">$</span>
+        <code id="cmd2">brew install --cask matthysdev/hush/hush</code>
+      </div>
+      <button class="copy" id="copyBtn2">Copy</button>
+    </div>
+    <div class="note">
+      <span class="ni">⚠️</span>
+      <div>Hush isn't notarized by Apple — it's a free, open-source tool. On first launch macOS may block it: <strong>right-click the app → Open</strong>, or run <code>xattr -dr com.apple.quarantine /Applications/Hush.app</code>. You only do this once.</div>
+    </div>
+    <div class="req">Requires macOS, plus <b>Wispr Flow</b> and the <b>Discord desktop</b> app for the full push-to-talk bridge.</div>
+  </div>
+</section>
+
+<div class="wrap">
+  <footer>
+    <div>Hush · MIT © Matthys Ducrocq</div>
+    <div class="links">
+      <a href="https://github.com/MatthysDev/hush" target="_blank" rel="noopener">GitHub</a>
+      <span class="sep">·</span>
+      <a href="https://github.com/MatthysDev/hush/issues" target="_blank" rel="noopener">Issues</a>
+      <span class="sep">·</span>
+      <a href="https://github.com/MatthysDev/hush/releases" target="_blank" rel="noopener">Releases</a>
+    </div>
+  </footer>
+</div>
+
+<script>
+  function wireCopy(btnId, codeId){
+    var btn=document.getElementById(btnId), code=document.getElementById(codeId);
+    if(!btn||!code)return;
+    btn.addEventListener('click',function(){
+      var text=code.textContent;
+      var done=function(){btn.textContent='Copied';btn.classList.add('done');
+        setTimeout(function(){btn.textContent='Copy';btn.classList.remove('done')},1600)};
+      if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done)}
+      else{var t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();
+        try{document.execCommand('copy')}catch(e){}document.body.removeChild(t);done()}
+    });
+  }
+  wireCopy('copyBtn','cmd');
+  wireCopy('copyBtn2','cmd2');
+</script>
+</body>
+</html>

@@ -1,150 +1,114 @@
 import { describe, it, expect } from 'vitest';
 import { Orchestrator } from '../src/orchestrator';
-import { Combo, HushConfig, SynthEngine } from '../src/types';
+import { DiscordMuter, HushConfig } from '../src/types';
 
-class FakeSynth implements SynthEngine {
-  calls: string[] = [];
-  async tapCombo(c: Combo) { this.calls.push(`tap:${c.key}`); }
-  async holdDown(c: Combo) { this.calls.push(`down:${c.key}`); }
-  async holdUp(c: Combo) { this.calls.push(`up:${c.key}`); }
+// Records the exact order of Discord mute/unmute calls.
+class FakeMuter implements DiscordMuter {
+  constructor(readonly calls: string[]) {}
+  async setMute(on: boolean) { this.calls.push(`mute:${on}`); }
 }
 
-const cfg = (over: Partial<HushConfig> = {}): HushConfig => ({
-  trigger: { mods: [], key: 'F13' },
-  discordCombo: { mods: ['ctrl', 'alt', 'cmd'], key: '1' },
-  wisprCombo: { mods: ['ctrl', 'alt', 'cmd'], key: '2' },
-  mode: 'hold',
-  unmuteDelayMs: 0,
-  muteDictateGapMs: 0,
-  ...over,
-});
+function rig(over: Partial<HushConfig> = {}, sleep?: (ms: number) => Promise<void>) {
+  const calls: string[] = [];
+  const cfg: HushConfig = {
+    shortcut: { mods: ['ctrl', 'alt'], key: '' },
+    discordRpc: { clientId: '', clientSecret: '' },
+    mode: 'hold',
+    unmuteDelayMs: 0,
+    ...over,
+  };
+  const o = new Orchestrator(new FakeMuter(calls), cfg, undefined, sleep);
+  return { calls, o };
+}
 
 describe('Orchestrator hold mode', () => {
-  it('press mutes Discord then starts Wispr; release stops Wispr then unmutes', async () => {
-    const s = new FakeSynth();
-    const o = new Orchestrator(s, cfg());
+  it('press mutes Discord; release unmutes', async () => {
+    const { calls, o } = rig();
     await o.onPress();
     await o.onRelease();
-    expect(s.calls).toEqual(['tap:1', 'down:2', 'up:2', 'tap:1']);
+    expect(calls).toEqual(['mute:true', 'mute:false']);
   });
   it('ignores a duplicated press while active (no double mute)', async () => {
-    const s = new FakeSynth();
-    const o = new Orchestrator(s, cfg());
+    const { calls, o } = rig();
     await o.onPress();
     await o.onPress();
-    expect(s.calls).toEqual(['tap:1', 'down:2']);
+    expect(calls).toEqual(['mute:true']);
   });
 });
 
-describe('Orchestrator mute→dictate gap', () => {
-  it('sleeps for muteDictateGapMs between muting Discord and starting Wispr', async () => {
-    const s = new FakeSynth();
-    const o = new Orchestrator(s, cfg({ muteDictateGapMs: 25 }), undefined, async (ms) => {
-      s.calls.push(`sleep:${ms}`);
-    });
-    await o.onPress();
-    expect(s.calls).toEqual(['tap:1', 'sleep:25', 'down:2']);
+describe('Orchestrator transition serialization', () => {
+  // A modifier-only shortcut releases only milliseconds after it presses. If the
+  // async mute/unmute weren't serialized, a release arriving mid-mute could run
+  // its unmute before the mute resolved and leave Discord muted for good.
+  it('a release during the mute round-trip runs AFTER the mute completes', async () => {
+    // Real timer so the mute actually yields the event loop.
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+    const calls: string[] = [];
+    const cfg: HushConfig = {
+      shortcut: { mods: ['ctrl', 'alt'], key: '' },
+      discordRpc: { clientId: '', clientSecret: '' },
+      mode: 'hold',
+      unmuteDelayMs: 10,
+    };
+    const o = new Orchestrator(new FakeMuter(calls), cfg, undefined, sleep);
+    const press = o.onPress();
+    const release = o.onRelease(); // arrives while the (delayed) transition is pending
+    await Promise.all([press, release]);
+    expect(calls).toEqual(['mute:true', 'mute:false']);
   });
-  it('skips the gap when muteDictateGapMs is 0', async () => {
-    const s = new FakeSynth();
-    const o = new Orchestrator(s, cfg({ muteDictateGapMs: 0 }), undefined, async (ms) => {
-      s.calls.push(`sleep:${ms}`);
-    });
+});
+
+describe('Orchestrator unmute delay', () => {
+  it('waits unmuteDelayMs before unmuting on release', async () => {
+    const calls: string[] = [];
+    const sleep = async (ms: number) => { calls.push(`sleep:${ms}`); };
+    const { o } = { o: new Orchestrator(new FakeMuter(calls), {
+      shortcut: { mods: ['ctrl', 'alt'], key: '' },
+      discordRpc: { clientId: '', clientSecret: '' },
+      mode: 'hold',
+      unmuteDelayMs: 40,
+    }, undefined, sleep) };
     await o.onPress();
-    expect(s.calls).toEqual(['tap:1', 'down:2']);
+    await o.onRelease();
+    expect(calls).toEqual(['mute:true', 'sleep:40', 'mute:false']);
   });
 });
 
 describe('Orchestrator toggle mode', () => {
-  it('first press activates, release is ignored, second press deactivates', async () => {
-    const s = new FakeSynth();
-    const o = new Orchestrator(s, cfg({ mode: 'toggle' }));
+  it('first press mutes, release is ignored, second press unmutes', async () => {
+    const { calls, o } = rig({ mode: 'toggle' });
     await o.onPress();
     await o.onRelease();
     await o.onPress();
-    expect(s.calls).toEqual(['tap:1', 'down:2', 'up:2', 'tap:1']);
+    expect(calls).toEqual(['mute:true', 'mute:false']);
   });
 });
 
 describe('Orchestrator forceRelease (watchdog)', () => {
-  it('deactivates when active so we never stay muted', async () => {
-    const s = new FakeSynth();
-    const o = new Orchestrator(s, cfg());
+  it('unmutes when active so we never stay muted', async () => {
+    const { calls, o } = rig();
     await o.onPress();
     await o.forceRelease();
     expect(o.isActive()).toBe(false);
-    expect(s.calls).toEqual(['tap:1', 'down:2', 'up:2', 'tap:1']);
+    expect(calls).toEqual(['mute:true', 'mute:false']);
   });
   it('is a no-op when idle', async () => {
-    const s = new FakeSynth();
-    const o = new Orchestrator(s, cfg());
+    const { calls, o } = rig();
     await o.forceRelease();
-    expect(s.calls).toEqual([]);
-  });
-});
-
-// A fake that records modifiers too, so we can assert the physical-modifier
-// masking (synthetic release of the held trigger mods before each injection).
-class ModSynth implements SynthEngine {
-  calls: string[] = [];
-  private label(c: Combo) {
-    return (c.mods.join('+') || '∅') + (c.key ? `:${c.key}` : '');
-  }
-  async tapCombo(c: Combo) { this.calls.push(`tap:${this.label(c)}`); }
-  async holdDown(c: Combo) { this.calls.push(`down:${this.label(c)}`); }
-  async holdUp(c: Combo) { this.calls.push(`up:${this.label(c)}`); }
-}
-
-describe('Orchestrator physical-modifier masking', () => {
-  // A modifier-only HOLD trigger (e.g. ⌃⌥⇧) shares modifiers with the injected
-  // combos. While the user physically holds ⌃⌥⇧, every synthesized chord arrives
-  // polluted (Discord would see ⌃⌥⇧⌘X instead of ⌘⌥X) and never matches. The fix:
-  // synth-release the held trigger modifiers before injecting, so Discord/Wispr
-  // get clean chords.
-  const masked = (over: Partial<HushConfig> = {}): HushConfig => cfg({
-    trigger: { mods: ['ctrl', 'alt', 'shift'], key: '' },
-    discordCombo: { mods: ['alt', 'cmd'], key: 'X' },
-    wisprCombo: { mods: ['ctrl', 'alt'], key: 'Z' },
-    ...over,
-  });
-
-  it('releases the held trigger modifiers before muting on activate', async () => {
-    const s = new ModSynth();
-    const o = new Orchestrator(s, masked());
-    await o.onPress();
-    expect(s.calls).toEqual([
-      'up:ctrl+alt+shift', // mask the physically-held trigger modifiers
-      'tap:alt+cmd:X',     // clean Discord mute
-      'down:ctrl+alt:Z',   // clean Wispr dictation
-    ]);
-  });
-
-  it('masks again before unmuting on release (covers toggle re-press)', async () => {
-    const s = new ModSynth();
-    const o = new Orchestrator(s, masked());
-    await o.onPress();
-    s.calls = [];
-    await o.onRelease();
-    expect(s.calls).toEqual([
-      'up:ctrl+alt+shift', // mask once more — modifiers may still be held
-      'up:ctrl+alt:Z',     // stop Wispr
-      'tap:alt+cmd:X',     // clean Discord unmute
-    ]);
-  });
-
-  it('does not mask when the trigger has no modifiers (e.g. F13)', async () => {
-    const s = new ModSynth();
-    const o = new Orchestrator(s, masked({ trigger: { mods: [], key: 'F13' } }));
-    await o.onPress();
-    expect(s.calls).toEqual(['tap:alt+cmd:X', 'down:ctrl+alt:Z']);
+    expect(calls).toEqual([]);
   });
 });
 
 describe('Orchestrator onActiveChange', () => {
   it('notifies on activate and deactivate', async () => {
-    const s = new FakeSynth();
+    const calls: string[] = [];
     const seen: boolean[] = [];
-    const o = new Orchestrator(s, cfg(), (a) => seen.push(a));
+    const o = new Orchestrator(new FakeMuter(calls), {
+      shortcut: { mods: ['ctrl', 'alt'], key: '' },
+      discordRpc: { clientId: '', clientSecret: '' },
+      mode: 'hold',
+      unmuteDelayMs: 0,
+    }, (a) => seen.push(a));
     await o.onPress();
     await o.onRelease();
     expect(seen).toEqual([true, false]);

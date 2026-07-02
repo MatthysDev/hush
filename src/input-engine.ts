@@ -1,7 +1,6 @@
 import { uIOhook, UiohookKey } from 'uiohook-napi';
 import { Combo, InputEngine, Mod } from './types';
 import { normalizeMods } from './combo';
-import { SynthGuard } from './synth-guard';
 import { dbg } from './debug';
 
 interface UiohookEvent {
@@ -61,8 +60,7 @@ function sameMods(required: Mod[], pressed: Set<Mod>): boolean {
 
 // Pure latch: maps abstract key/modifier events to press/release callbacks.
 // No native dependency, so it is unit-testable in isolation. The adapter below
-// translates raw uiohook keycodes and filters out the keystrokes Hush itself
-// synthesizes (via SynthGuard).
+// translates raw uiohook keycodes into these calls.
 export class TriggerDetector {
   private pressed = new Set<Mod>(); // currently-held modifiers (live, physical)
   private keyLatched = false;       // key-mode latch
@@ -139,16 +137,11 @@ export class UiohookInputEngine implements InputEngine {
   private readonly onKeyDown: (e: UiohookEvent) => void;
   private readonly onKeyUp: (e: UiohookEvent) => void;
 
-  constructor(trigger: Combo, private readonly guard?: SynthGuard) {
-    if (trigger.key) keyToUiohook(trigger.key); // validate eagerly (throws on unsupported)
-    this.detector = new TriggerDetector(trigger);
+  constructor(shortcut: Combo) {
+    if (shortcut.key) keyToUiohook(shortcut.key); // validate eagerly (throws on unsupported)
+    this.detector = new TriggerDetector(shortcut);
 
     this.onKeyDown = (e) => {
-      // Drop the keystrokes we just injected — otherwise a modifier-only trigger
-      // feeds back on itself and flaps mute on/off forever.
-      const synthetic = this.guard?.isSynthetic() ?? false;
-      this.logHook('keydown', e, synthetic);
-      if (synthetic) return;
       const mod = MODIFIER_MAP[e.keycode];
       if (mod) { this.detector.modDown(mod); return; }
       const key = uiohookKeyToKey(e.keycode);
@@ -156,28 +149,11 @@ export class UiohookInputEngine implements InputEngine {
     };
 
     this.onKeyUp = (e) => {
-      const synthetic = this.guard?.isSynthetic() ?? false;
-      this.logHook('keyup', e, synthetic);
-      if (synthetic) return;
       const mod = MODIFIER_MAP[e.keycode];
       if (mod) { this.detector.modUp(mod); return; }
       const key = uiohookKeyToKey(e.keycode);
       if (key) this.detector.keyUp(key);
     };
-  }
-
-  // TEMP DEBUG: one line per raw hook event. The smoking gun for the feedback
-  // loop is a modifier/digit event with verdict PASS while depth=0 and age>60ms
-  // right after a `synth:` burst — that's a self-injected key the guard failed
-  // to drop, now hitting the detector and toggling mute on its own.
-  private logHook(type: 'keydown' | 'keyup', e: UiohookEvent, synthetic: boolean): void {
-    const mod = MODIFIER_MAP[e.keycode];
-    const key = uiohookKeyToKey(e.keycode);
-    const name = mod ?? key ?? `code:${e.keycode}`;
-    const snap = this.guard?.snapshot();
-    const age = snap ? (snap.sinceEndMs === Infinity ? '∞' : `${snap.sinceEndMs.toFixed(0)}ms`) : 'n/a';
-    const depth = snap ? snap.depth : 'n/a';
-    dbg(`hook: ${type} ${name}`, synthetic ? 'DROP(synthetic)' : 'PASS→detector', `depth=${depth} age=${age}`);
   }
 
   onPress(cb: () => void): void { this.detector.onPress(cb); }

@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div class="drag"></div>
+
   <header class="hero">
     <img class="logo" src="../assets/icon.svg" alt="Hush" />
     <div class="hero-text">
@@ -20,9 +22,32 @@
   </header>
 
   <main>
+    <!-- Discord RPC -->
+    <section class="card">
+      <div class="card-head">
+        <h2>Discord</h2>
+        <span id="rpc-state" class="pill pill-off">Non connecté</span>
+      </div>
+      <p class="muted">Hush coupe ton micro Discord par le socket local (RPC) — aucune touche simulée. Colle les identifiants de ton app Discord.</p>
+
+      <div class="field">
+        <label for="rpc-id">Client ID</label>
+        <input id="rpc-id" type="text" spellcheck="false" autocomplete="off" placeholder="123456789012345678" />
+      </div>
+      <div class="field">
+        <label for="rpc-secret">Client Secret</label>
+        <input id="rpc-secret" type="password" spellcheck="false" autocomplete="off" placeholder="••••••••••••••••••••••••" />
+      </div>
+      <div class="row-actions">
+        <button class="ghost" id="rpc-reconnect">Connecter</button>
+        <a class="link" id="open-tuto" href="#">Comment obtenir ça ?</a>
+      </div>
+    </section>
+
+    <!-- Permissions -->
     <section class="card" id="perm-card">
       <h2>Permissions macOS</h2>
-      <p class="muted">Hush a besoin d'écouter une touche globale et de simuler des raccourcis.</p>
+      <p class="muted">Hush écoute ton raccourci au niveau du système pour couper Discord pile au bon moment.</p>
       <div class="perm-row">
         <span id="acc-state" class="pill pill-warn">Accessibilité : à activer</span>
         <button class="ghost" id="open-acc">Ouvrir</button>
@@ -33,34 +58,20 @@
       </div>
     </section>
 
+    <!-- Shortcut -->
     <section class="card">
-      <h2>Raccourcis</h2>
-
+      <h2>Ton raccourci</h2>
+      <p class="muted">Mets ici <strong>exactement</strong> le même push-to-talk que dans Wispr Flow. Tu le presses toi-même (Wispr dicte), Hush coupe Discord tant que tu le tiens.</p>
       <div class="binding">
         <div class="binding-label">
-          <strong>Déclencheur</strong>
-          <span class="muted">la touche que TU presses</span>
+          <strong>Push-to-talk</strong>
+          <span class="muted">identique à Wispr → Réglages → Raccourcis</span>
         </div>
-        <button class="capture" data-field="trigger" id="cap-trigger">F13</button>
-      </div>
-
-      <div class="binding">
-        <div class="binding-label">
-          <strong>Discord — Toggle Mute</strong>
-          <span class="muted">le même combo que dans Discord</span>
-        </div>
-        <button class="capture" data-field="discordCombo" id="cap-discord">⌃⌥⌘1</button>
-      </div>
-
-      <div class="binding">
-        <div class="binding-label">
-          <strong>Wispr — Push-to-talk</strong>
-          <span class="muted">le même combo que dans Wispr</span>
-        </div>
-        <button class="capture" data-field="wisprCombo" id="cap-wispr">⌃⌥⌘2</button>
+        <button class="capture" data-field="shortcut" id="cap-shortcut">⌃⌥</button>
       </div>
     </section>
 
+    <!-- Behaviour -->
     <section class="card">
       <h2>Comportement</h2>
       <div class="binding">
@@ -69,13 +80,6 @@
           <button data-mode="hold" class="active">Maintenir</button>
           <button data-mode="toggle">Bascule</button>
         </div>
-      </div>
-      <div class="binding">
-        <div class="binding-label">
-          <strong>Délai mute → dictée</strong>
-          <span class="muted"><span id="gap-val">25</span> ms</span>
-        </div>
-        <input type="range" id="gap" min="0" max="200" step="5" value="25" />
       </div>
       <div class="binding">
         <div class="binding-label">
@@ -89,12 +93,32 @@
     <p class="err" id="err"></p>
 
     <div class="actions">
-      <button class="quit" id="quit">Quitter</button>
+      <div class="row-actions">
+        <button class="quit" id="quit">Quitter</button>
+        <a class="link" id="replay-tuto" href="#">Revoir le tuto</a>
+      </div>
       <button class="primary" id="save">Enregistrer</button>
     </div>
 
-    <p class="hint">Pour capturer un raccourci : clique le bouton, puis presse ta touche. Pour une <em>combinaison de modificateurs seuls</em> (ex. <em>⌃⌥</em>), maintiens-les puis relâche. Échap = annuler.<br/>Mets le combo Discord (Toggle Mute) et le combo Wispr (push-to-talk) <em>identiques</em> à ce que tu vois ci-dessus.</p>
+    <p class="hint">Capturer un raccourci : clique le bouton, presse ta touche. Pour des <em>modificateurs seuls</em> (ex. <em>⌃⌥</em>) maintiens-les puis relâche. Échap = annuler.</p>
   </main>
+
+  <!-- Onboarding tutorial -->
+  <div class="overlay" id="onboarding" hidden>
+    <div class="modal">
+      <div class="steps" id="ob-steps"></div>
+      <div id="ob-body"></div>
+      <div class="modal-actions">
+        <div class="left">
+          <button class="skip" id="ob-skip">Passer</button>
+        </div>
+        <div class="row-actions">
+          <button class="ghost hidden" id="ob-back">Retour</button>
+          <button class="primary" id="ob-next">Suivant</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="renderer.js"></script>
 </body>

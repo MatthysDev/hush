@@ -7,15 +7,13 @@ import { loadConfig, saveConfig } from './store';
 import { comboLabel, normalizeMods } from './combo';
 import { dbg, LOG_FILE } from './debug';
 import { Orchestrator } from './orchestrator';
-import { NutSynthEngine } from './synth-engine';
-import { SynthGuard, GuardedSynth } from './synth-guard';
+import { DiscordRpcMuter } from './discord-mute';
 import {
   UiohookInputEngine,
   uiohookModifierOf,
   isUiohookEscape,
   uiohookKeyToKey,
 } from './input-engine';
-import { registerTestBench } from './experiments';
 
 interface MacPermissions {
   getAuthStatus(type: string): string;
@@ -24,7 +22,7 @@ interface MacPermissions {
 }
 let macPerms: MacPermissions | null = null;
 try {
-  // Shipped transitively by nut-js; lets us read the real Input Monitoring status.
+  // Reads the real Input Monitoring status and can open the prompt for it.
   macPerms = require('@nut-tree-fork/node-mac-permissions') as MacPermissions;
 } catch {
   macPerms = null;
@@ -44,17 +42,13 @@ export type CaptureResult =
 
 const ASSETS = path.join(__dirname, '..', 'assets');
 const RENDERER = path.join(__dirname, '..', 'renderer', 'index.html');
-const RENDERER_TESTBENCH = path.join(__dirname, '..', 'renderer', 'testbench.html');
 
 let tray: Tray | null = null;
 let win: BrowserWindow | null = null;
-let testWin: BrowserWindow | null = null;
 
-// One guard shared by the synth (marks the injection window) and the input
-// engine (drops those self-generated events). Without it a modifier-only
-// trigger re-detects its own synthesized modifiers and flaps mute on/off.
-const synthGuard = new SynthGuard();
-const synth = new GuardedSynth(new NutSynthEngine(), synthGuard);
+// Mutes Discord over RPC (the only approach Discord honors). Shared across
+// config reloads; reconnected when credentials change.
+const discord = new DiscordRpcMuter();
 let orchestrator: Orchestrator | null = null;
 let input: UiohookInputEngine | null = null;
 let cfg: HushConfig = loadConfig();
@@ -69,9 +63,18 @@ function trayImage(name: 'trayIdleTemplate' | 'trayActiveTemplate') {
 }
 
 function pushStatus() {
-  win?.webContents.send('status', { active, engineReady });
+  win?.webContents.send('status', {
+    active,
+    engineReady,
+    rpc: discord.getState(),
+    rpcError: discord.getError(),
+  });
   if (tray) tray.setImage(trayImage(active ? 'trayActiveTemplate' : 'trayIdleTemplate'));
   refreshTrayMenu();
+}
+
+function rpcLabel(state: 'disconnected' | 'connecting' | 'connected'): string {
+  return state === 'connected' ? 'connecté ✓' : state === 'connecting' ? 'connexion…' : 'non connecté';
 }
 
 function refreshTrayMenu() {
@@ -85,11 +88,11 @@ function refreshTrayMenu() {
     Menu.buildFromTemplate([
       { label: `${BRAND.name} — ${status}`, enabled: false },
       { type: 'separator' },
-      { label: `Déclencheur : ${comboLabel(cfg.trigger)}`, enabled: false },
+      { label: `Raccourci : ${comboLabel(cfg.shortcut)}`, enabled: false },
       { label: `Mode : ${cfg.mode === 'hold' ? 'Maintenir' : 'Bascule'}`, enabled: false },
+      { label: `Discord : ${rpcLabel(discord.getState())}`, enabled: false },
       { type: 'separator' },
       { label: 'Réglages…', click: showWindow },
-      { label: 'Ouvrir le Test Bench…', click: showTestBench },
       { label: 'Quitter Hush', click: () => app.quit() },
     ]),
   );
@@ -102,11 +105,11 @@ function applyConfig(next: HushConfig) {
 
   cfg = next;
   active = false;
-  orchestrator = new Orchestrator(synth, cfg, (isActive) => {
+  orchestrator = new Orchestrator(discord, cfg, (isActive) => {
     active = isActive;
     pushStatus();
   });
-  input = new UiohookInputEngine(cfg.trigger, synthGuard);
+  input = new UiohookInputEngine(cfg.shortcut);
   input.onPress(() => { if (capturing) return; void orchestrator?.onPress(); });
   input.onRelease(() => { if (capturing) return; void orchestrator?.onRelease(); });
 
@@ -119,11 +122,24 @@ function applyConfig(next: HushConfig) {
   dbg('engine start', {
     logFile: LOG_FILE,
     mode: cfg.mode,
-    trigger: comboLabel(cfg.trigger),
-    discord: comboLabel(cfg.discordCombo),
-    wispr: comboLabel(cfg.wisprCombo),
+    shortcut: comboLabel(cfg.shortcut),
+    discordRpc: discord.getState(),
     engineReady,
   });
+  pushStatus();
+}
+
+// (Re)connect the Discord RPC from the current config. Best-effort: failures are
+// captured in the muter's state and surfaced via status, never thrown.
+async function connectDiscord(): Promise<void> {
+  const { clientId, clientSecret } = cfg.discordRpc;
+  if (!clientId || !clientSecret) {
+    await discord.disconnect();
+    pushStatus();
+    return;
+  }
+  pushStatus(); // reflect 'connecting'
+  await discord.connect(clientId, clientSecret);
   pushStatus();
 }
 
@@ -156,34 +172,6 @@ function showWindow() {
     pushStatus();
   });
   win.on('closed', () => { win = null; });
-}
-
-function showTestBench() {
-  if (testWin) {
-    testWin.show();
-    testWin.focus();
-    return;
-  }
-  testWin = new BrowserWindow({
-    width: 620,
-    height: 860,
-    resizable: true,
-    minWidth: 520,
-    minHeight: 640,
-    fullscreenable: false,
-    title: `${BRAND.name} — Test Bench`,
-    titleBarStyle: 'hiddenInset',
-    backgroundColor: BRAND.colors.bg,
-    show: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-  testWin.loadFile(RENDERER_TESTBENCH);
-  testWin.once('ready-to-show', () => testWin?.show());
-  testWin.on('closed', () => { testWin = null; });
 }
 
 function authStatus(type: string): string | null {
@@ -274,6 +262,7 @@ if (!app.requestSingleInstanceLock()) {
     tray.on('click', showWindow);
 
     applyConfig(cfg);
+    void connectDiscord(); // best-effort auto-connect from stored credentials
 
     // First run: open the settings window so the user can set things up.
     showWindow();
@@ -283,8 +272,16 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle('brand:get', () => ({ name: BRAND.name, tagline: BRAND.taglineFr }));
     ipcMain.handle('config:set', (_e, next: HushConfig) => {
       try {
+        const prev = cfg;
         const saved = saveConfig(next);
         applyConfig(saved);
+        // Reconnect the RPC only when the credentials actually changed.
+        if (
+          saved.discordRpc.clientId !== prev.discordRpc.clientId ||
+          saved.discordRpc.clientSecret !== prev.discordRpc.clientSecret
+        ) {
+          void connectDiscord();
+        }
         return { ok: true, config: saved };
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -305,10 +302,15 @@ if (!app.requestSingleInstanceLock()) {
       );
     });
     ipcMain.on('app:quit', () => app.quit());
-    ipcMain.on('testbench:open', showTestBench);
-
-    // Experiment test bench (isolated from the push-to-talk engine).
-    registerTestBench(ipcMain, () => cfg);
+    ipcMain.on('app:open-external', (_e, url: unknown) => {
+      // Only ever open https links the UI points at (e.g. the Discord dev portal).
+      if (typeof url === 'string' && /^https:\/\//.test(url)) void shell.openExternal(url);
+    });
+    // Manual reconnect from the settings window (e.g. after launching Discord).
+    ipcMain.handle('rpc:reconnect', async () => {
+      await connectDiscord();
+      return { state: discord.getState(), error: discord.getError() };
+    });
   });
 
   // Watchdog: never leave Discord muted on quit/crash.
