@@ -83,7 +83,11 @@
   .btn.alt:hover{background:#242432;border-color:var(--primary-dim);box-shadow:none}
   .btn .os-ico{width:16px;height:16px;display:block;flex:none}
   .dl-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:14px}
-  .free{margin-top:20px;font-size:13px;color:var(--muted)}
+  .ver{margin-top:16px;display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--mint);
+    background:rgba(84,230,192,.08);border:1px solid rgba(84,230,192,.25);padding:5px 12px;border-radius:999px}
+  .ver a{color:var(--mint);text-decoration:none;font-weight:600}
+  .ver a:hover{text-decoration:underline}
+  .free{margin-top:16px;font-size:13px;color:var(--muted)}
 
   /* sections */
   section{position:relative;z-index:1;padding:64px 0;border-top:1px solid transparent}
@@ -214,6 +218,7 @@
       <a class="btn alt" href="https://github.com/MatthysDev/hush/releases/latest/download/Hush-arm64.dmg"><img class="os-ico" src="mac.png" alt="" width="16" height="16"> macOS&nbsp;(.dmg)</a>
       <a class="btn alt" href="https://github.com/MatthysDev/hush/releases/latest/download/Hush-Setup.exe"><img class="os-ico" src="win.png" alt="" width="16" height="16"> Windows&nbsp;(.exe)</a>
     </div>
+    <div class="ver">✨ v0.1.2 — now supports the <strong>Fn / 🌐 key</strong> (Wispr's default). <a href="https://github.com/MatthysDev/hush/releases/latest" target="_blank" rel="noopener">Re-download →</a></div>
     <div class="free">macOS 12+ (Apple Silicon) · Windows 10/11 · MIT · no account · no telemetry</div>
   </header>
 </div>
