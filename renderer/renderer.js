@@ -33,6 +33,7 @@ const els = {
   rpcId: $('rpc-id'),
   rpcSecret: $('rpc-secret'),
   rpcState: $('rpc-state'),
+  rpcError: $('rpc-error'),
   rpcReconnect: $('rpc-reconnect'),
   openTuto: $('open-tuto'),
   replayTuto: $('replay-tuto'),
@@ -150,6 +151,16 @@ function setStatus(s) {
   setRpcPill(els.rpcState, s.rpc);
   const ob = $('ob-rpc-state');
   if (ob) setRpcPill(ob, s.rpc);
+  // Surface the real reason a connection failed (esp. useful on Windows) instead
+  // of a silent "Non connecté".
+  if (els.rpcError) {
+    if (s.rpc !== 'connected' && s.rpcError) {
+      els.rpcError.textContent = `Discord : ${s.rpcError}`;
+      els.rpcError.hidden = false;
+    } else {
+      els.rpcError.hidden = true;
+    }
+  }
 }
 
 function setRpcPill(el, state) {

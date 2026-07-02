@@ -33,7 +33,12 @@ export type RpcState = 'disconnected' | 'connecting' | 'connected';
 
 const SCOPES = ['rpc', 'rpc.voice.write'];
 const REDIRECT = 'http://localhost';
-const CONNECT_TIMEOUT_MS = 8000;
+// A silent (cached-token) login is pure machinery — bound it tightly. The full
+// OAuth authorize waits for the user to click "Authorize" in Discord's popup, so
+// it needs a generous window (killing it early was breaking first-time connects,
+// especially on Windows) — but still bounded so a wedged socket can't hang forever.
+const TOKEN_LOGIN_TIMEOUT_MS = 12000;
+const AUTHORIZE_TIMEOUT_MS = 120000;
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -76,10 +81,10 @@ export class DiscordRpcMuter implements DiscordMuter {
 
   // Try to bring a fresh client up with the given login options. Returns the
   // connected client on success, or throws.
-  private async open(options: LoginOptions): Promise<RpcClient> {
+  private async open(options: LoginOptions, timeoutMs: number): Promise<RpcClient> {
     const RPC = this.load();
     const client = new RPC.Client({ transport: 'ipc' });
-    await withTimeout(client.login(options), CONNECT_TIMEOUT_MS, 'rpc login');
+    await withTimeout(client.login(options), timeoutMs, 'rpc login');
     return client;
   }
 
@@ -100,7 +105,7 @@ export class DiscordRpcMuter implements DiscordMuter {
     // 1) Silent path: reuse a cached token (no authorize popup).
     if (accessToken) {
       try {
-        const client = await this.open({ clientId, accessToken });
+        const client = await this.open({ clientId, accessToken }, TOKEN_LOGIN_TIMEOUT_MS);
         this.client = client;
         this.accessToken = accessToken;
         this.state = 'connected';
@@ -114,7 +119,10 @@ export class DiscordRpcMuter implements DiscordMuter {
 
     // 2) Full OAuth authorize (prompts the first time / when the token expired).
     try {
-      const client = await this.open({ clientId, clientSecret, scopes: SCOPES, redirectUri: REDIRECT });
+      const client = await this.open(
+        { clientId, clientSecret, scopes: SCOPES, redirectUri: REDIRECT },
+        AUTHORIZE_TIMEOUT_MS,
+      );
       this.client = client;
       this.accessToken = client.accessToken ?? null;
       this.state = 'connected';

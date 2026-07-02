@@ -1,6 +1,6 @@
 {
   "name": "hush",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Push-to-talk bridge: mute Discord while you dictate with Wispr Flow",
   "author": "Matthys Ducrocq",
   "license": "MIT",
@@ -61,14 +61,14 @@
     },
     "dmg": {
       "title": "Hush",
-      "artifactName": "Hush-${version}-${arch}.dmg"
+      "artifactName": "Hush-${arch}.dmg"
     },
     "win": {
       "target": [
         "nsis"
       ],
       "icon": "assets/icon.ico",
-      "artifactName": "Hush-${version}-Setup.exe"
+      "artifactName": "Hush-Setup.exe"
     }
   }
 }
