@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Orchestrator } from '../src/orchestrator';
 import { DiscordMuter, HushConfig } from '../src/types';
+import { DEFAULT_CONFIG } from '../src/config';
 
 // Records the exact order of Discord mute/unmute calls.
 class FakeMuter implements DiscordMuter {
@@ -11,8 +12,7 @@ class FakeMuter implements DiscordMuter {
 function rig(over: Partial<HushConfig> = {}, sleep?: (ms: number) => Promise<void>) {
   const calls: string[] = [];
   const cfg: HushConfig = {
-    shortcut: { mods: ['ctrl', 'alt'], key: '' },
-    discordRpc: { clientId: '', clientSecret: '' },
+    ...DEFAULT_CONFIG,
     mode: 'hold',
     unmuteDelayMs: 0,
     ...over,
@@ -45,8 +45,7 @@ describe('Orchestrator transition serialization', () => {
     const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
     const calls: string[] = [];
     const cfg: HushConfig = {
-      shortcut: { mods: ['ctrl', 'alt'], key: '' },
-      discordRpc: { clientId: '', clientSecret: '' },
+      ...DEFAULT_CONFIG,
       mode: 'hold',
       unmuteDelayMs: 10,
     };
@@ -63,8 +62,7 @@ describe('Orchestrator unmute delay', () => {
     const calls: string[] = [];
     const sleep = async (ms: number) => { calls.push(`sleep:${ms}`); };
     const { o } = { o: new Orchestrator(new FakeMuter(calls), {
-      shortcut: { mods: ['ctrl', 'alt'], key: '' },
-      discordRpc: { clientId: '', clientSecret: '' },
+      ...DEFAULT_CONFIG,
       mode: 'hold',
       unmuteDelayMs: 40,
     }, undefined, sleep) };
@@ -104,8 +102,7 @@ describe('Orchestrator onActiveChange', () => {
     const calls: string[] = [];
     const seen: boolean[] = [];
     const o = new Orchestrator(new FakeMuter(calls), {
-      shortcut: { mods: ['ctrl', 'alt'], key: '' },
-      discordRpc: { clientId: '', clientSecret: '' },
+      ...DEFAULT_CONFIG,
       mode: 'hold',
       unmuteDelayMs: 0,
     }, (a) => seen.push(a));
