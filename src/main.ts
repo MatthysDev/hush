@@ -351,16 +351,25 @@ if (!app.requestSingleInstanceLock()) {
         const saved = saveConfig(next);
         applyConfig(saved);
 
-        // Tear down anything from the previous role, then bring up the new one.
+        // Tear down BOTH cross-machine resources unconditionally before bringing up the
+        // new role — mirrors how applyConfig() already released the input/orchestrator.
         stopHost();
-        if (saved.role === 'host') { void connectDiscord(); startHost(); }
-        else if (saved.role === 'controller') { void discord.disconnect(); connectRemote(); }
-        else {
-          remote.disconnect();
-          if (
-            saved.discordRpc.clientId !== prev.discordRpc.clientId ||
-            saved.discordRpc.clientSecret !== prev.discordRpc.clientSecret
-          ) void connectDiscord();
+        remote.disconnect();
+
+        const credsChanged =
+          saved.discordRpc.clientId !== prev.discordRpc.clientId ||
+          saved.discordRpc.clientSecret !== prev.discordRpc.clientSecret;
+
+        if (saved.role === 'controller') {
+          // Controller mutes the remote host, not local Discord.
+          void discord.disconnect();
+          connectRemote();
+        } else {
+          // Both 'local' and 'host' drive the LOCAL Discord RPC. Reconnect only when it
+          // isn't already up (e.g. returning from controller) or the creds changed —
+          // so a pure host-setting resave never drops a live socket mid-mute.
+          if (saved.role === 'host') startHost();
+          if (!discord.isConnected() || credsChanged) void connectDiscord();
         }
         return { ok: true, config: saved };
       } catch (err) {
