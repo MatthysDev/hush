@@ -330,15 +330,19 @@ function setStatus(s) {
   if (s.role === 'controller') {
     const r = s.remote || {};
     const help = $('remote-help');
+    const obStatus = $('ob-remote-status');
+    const setRemote = (text, cls) => {
+      els.remoteStatus.textContent = text; els.remoteStatus.className = cls;
+      if (obStatus) { obStatus.textContent = text; obStatus.className = cls; }
+    };
     if (r.state === 'connected') {
-      els.remoteStatus.textContent = 'Connecté ✓'; els.remoteStatus.className = 'pill pill-ok';
+      setRemote('Connecté ✓', 'pill pill-ok');
       if (help) help.hidden = true;
     } else if (r.state === 'connecting') {
-      els.remoteStatus.textContent = 'Connexion…'; els.remoteStatus.className = 'pill pill-warn';
+      setRemote('Connexion…', 'pill pill-warn');
       if (help) help.hidden = true;
     } else {
-      els.remoteStatus.textContent = r.error ? `Échec : ${r.error}` : 'Hôte injoignable';
-      els.remoteStatus.className = r.error ? 'pill pill-warn' : 'pill pill-off';
+      setRemote(r.error ? `Échec : ${r.error}` : 'Hôte injoignable', r.error ? 'pill pill-warn' : 'pill pill-off');
       if (help) {
         help.textContent = "Vérifie : Hush ouvert sur le PC hôte · les deux machines sur le même réseau · IP et code exacts · le pare-feu du PC autorise le port " + (cfg.remote?.port || 8698) + '.';
         help.hidden = false;
@@ -474,13 +478,68 @@ const STEPS = [
   },
   {
     glyph: '🖥️',
-    title: 'Discord sur un autre PC ? (optionnel)',
-    body: `<p>Setup <strong>double PC</strong> — tu dictes ici mais Discord tourne sur une autre machine ? Hush sait couper ce Discord <strong>à distance</strong>, sur ton réseau local.</p>
-      <ol>
-        <li>Installe Hush aussi sur le PC qui a Discord, et coche <strong>« Cette machine héberge Discord »</strong> → il affiche une <strong>IP</strong> + un <strong>code d'appairage</strong>.</li>
-        <li>Ici, dans <strong>« Où est Discord ? »</strong> (fenêtre principale), choisis <strong>Autre machine</strong>, recopie l'IP et le code, puis <strong>Connecter</strong>.</li>
-      </ol>
-      <div class="callout">Les deux machines doivent être sur le <strong>même réseau</strong> (même Wi-Fi/box). En simple PC, ignore cette étape.</div>`,
+    title: 'Où est Discord ?',
+    body: `<p>Sur <strong>cette machine</strong>, ou sur un <strong>autre PC</strong> (setup double PC) — Hush le coupe dans les deux cas.</p>
+      <div class="binding">
+        <div class="binding-label"><strong>Emplacement de Discord</strong></div>
+        <div class="segment" id="ob-role-seg">
+          <button type="button" data-role="local" class="active">Cette machine</button>
+          <button type="button" data-role="controller">Autre machine</button>
+        </div>
+      </div>
+      <div id="ob-controller-panel" hidden>
+        <p class="hint">Ce Mac va commander le Discord de l'autre PC.</p>
+        <div class="row-actions"><button class="ghost" id="ob-discover-btn" type="button">Rechercher les hôtes…</button></div>
+        <ul id="ob-host-list"></ul>
+        <div class="field"><label for="ob-remote-host">Adresse (IP) du PC hôte</label><input id="ob-remote-host" type="text" spellcheck="false" placeholder="192.168.1.20" /></div>
+        <div class="field"><label for="ob-remote-port">Port</label><input id="ob-remote-port" type="number" value="8698" /></div>
+        <div class="field"><label for="ob-remote-code">Code d'appairage</label><input id="ob-remote-code" type="text" spellcheck="false" placeholder="ABC123" /></div>
+        <div class="row-actions"><button class="primary" id="ob-remote-connect" type="button">Connecter</button><span id="ob-remote-status" class="pill pill-off">Non connecté</span></div>
+      </div>
+      <hr />
+      <div class="perm-row"><span><strong>Cette machine héberge Discord</strong> <span class="muted">— pour une autre machine</span></span><input type="checkbox" id="ob-host-toggle" /></div>
+      <div id="ob-host-panel" hidden>
+        <p class="muted">Adresse(s) : <strong id="ob-host-addrs">—</strong></p>
+        <div class="field"><label for="ob-host-port">Port</label><input id="ob-host-port" type="number" value="8698" /></div>
+        <div class="field"><label for="ob-host-code">Code d'appairage</label><input id="ob-host-code" type="text" readonly /></div>
+        <div class="row-actions"><button class="ghost" id="ob-regen-code-btn" type="button">Régénérer le code</button></div>
+      </div>
+      <div class="callout">Les deux machines doivent être sur le <strong>même réseau</strong> (Wi-Fi/box). En simple PC, laisse « Cette machine ».</div>`,
+    wire(root) {
+      const refs = {
+        roleSeg: root.querySelector('#ob-role-seg'),
+        controllerPanel: root.querySelector('#ob-controller-panel'),
+        discoverBtn: root.querySelector('#ob-discover-btn'),
+        hostList: root.querySelector('#ob-host-list'),
+        remoteHost: root.querySelector('#ob-remote-host'),
+        remotePort: root.querySelector('#ob-remote-port'),
+        remoteCode: root.querySelector('#ob-remote-code'),
+        remoteConnect: root.querySelector('#ob-remote-connect'),
+        remoteStatus: root.querySelector('#ob-remote-status'),
+        hostToggle: root.querySelector('#ob-host-toggle'),
+        hostPanel: root.querySelector('#ob-host-panel'),
+        hostAddrs: root.querySelector('#ob-host-addrs'),
+        hostPort: root.querySelector('#ob-host-port'),
+        hostCode: root.querySelector('#ob-host-code'),
+        regenCodeBtn: root.querySelector('#ob-regen-code-btn'),
+      };
+      // Reflect current cfg into the freshly-rendered controls.
+      const controller = cfg.role === 'controller';
+      const hosting = cfg.role === 'host';
+      for (const b of refs.roleSeg.querySelectorAll('button')) {
+        b.classList.toggle('active', b.dataset.role === (controller ? 'controller' : 'local'));
+      }
+      refs.controllerPanel.hidden = !controller;
+      refs.hostToggle.checked = hosting;
+      refs.hostPanel.hidden = !hosting;
+      refs.remoteHost.value = cfg.remote.host || '';
+      refs.remotePort.value = String(cfg.remote.port || 8698);
+      refs.remoteCode.value = cfg.remote.pairingCode || '';
+      refs.hostPort.value = String(cfg.hostListen.port || 8698);
+      refs.hostCode.value = cfg.hostListen.pairingCode || '';
+      if (hosting) refreshHostAddrs(refs);
+      wireRoleControls(refs);
+    },
   },
   {
     glyph: '✅',
@@ -541,6 +600,15 @@ async function init() {
   refreshPermissions();
   setInterval(refreshPermissions, 2000);
   await initPermDrag(); // resolve drag availability before onboarding may render step 2
+
+  window.hush.onConfigUpdated((next) => {
+    cfg = next;
+    render();
+    if (!ob.overlay.hidden) renderStep(); // keep an open tutorial step in sync
+  });
+  window.hush.onFocusLocation(() => {
+    $('role-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
 
   let onboarded = false;
   try { onboarded = localStorage.getItem('hush.onboarded') === '1'; } catch { /* noop */ }
