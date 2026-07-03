@@ -38,7 +38,7 @@ fast path.
 ### 1. Controller-side heartbeat — `src/mute-client.ts`
 
 `RemoteDiscordMuter` gains a self-heartbeat symmetric to the host's
-(`src/net.ts` already pings clients and terminates dead ones):
+(`src/mute-transport.ts` already pings clients and terminates dead ones):
 
 - After `welcome` (state → `connected`), start an interval.
 - Each tick: if the previous tick's `pong` did **not** arrive → dead link →
@@ -58,7 +58,8 @@ Result: a dead link is detected within one heartbeat cycle (~5 s) with no
 dependency on OS events.
 
 `HEARTBEAT_MS` is exported from `src/mute-protocol.ts` (value `5000`) so both
-sides share one cadence; `src/net.ts` reuses it instead of its own local copy.
+sides share one cadence; `src/mute-transport.ts` (the ws transport, which holds
+the host-side heartbeat) reuses it instead of its own local copy.
 
 ### 2. Wake hook — `src/main.ts`
 
@@ -96,7 +97,7 @@ the sleep/wake repro.
 ## Files touched
 
 - `src/mute-protocol.ts` — export `HEARTBEAT_MS`.
-- `src/net.ts` — import shared `HEARTBEAT_MS` instead of the local const.
+- `src/mute-transport.ts` — import shared `HEARTBEAT_MS` instead of the local const.
 - `src/mute-client.ts` — heartbeat + `pong` handling + injectable timer.
 - `src/main.ts` — `powerMonitor.on('resume', …)` handler + import.
 - `tests/mute-client.test.ts` — heartbeat tests.
@@ -104,6 +105,6 @@ the sleep/wake repro.
 ## Error handling
 
 - Every tick guarded by `this.sock !== sock` (ignore stale sockets).
-- Sends already guard `readyState === OPEN` (`src/net.ts`), so a send on a dying
-  socket is a safe no-op.
+- Sends already guard `readyState === OPEN` (`src/mute-transport.ts`), so a send
+  on a dying socket is a safe no-op.
 - `cancel` the heartbeat on every teardown path to avoid leaked intervals.
