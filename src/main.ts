@@ -1,4 +1,4 @@
-import { app, Tray, Menu, BrowserWindow, nativeImage, ipcMain, shell, systemPreferences, MenuItemConstructorOptions } from 'electron';
+import { app, Tray, Menu, BrowserWindow, nativeImage, ipcMain, shell, systemPreferences, powerMonitor, MenuItemConstructorOptions } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
 import { uIOhook } from 'uiohook-napi';
@@ -522,6 +522,16 @@ if (!app.requestSingleInstanceLock()) {
     if (cfg.role === 'host') { void connectDiscord(); startHost(); }
     else if (cfg.role === 'controller') { connectRemote(); }
     else { void connectDiscord(); } // best-effort auto-connect from stored credentials
+
+    // A sleep can leave the LAN link half-open with no clean close, so proactively
+    // re-establish on wake instead of waiting on a heartbeat cycle. Both helpers
+    // are idempotent (connectRemote disconnects first and no-ops unless controller;
+    // startHost stops the old listener and re-advertises mDNS).
+    powerMonitor.on('resume', () => {
+      dbg('power: resume — re-establishing links');
+      connectRemote();
+      if (cfg.role === 'host') startHost();
+    });
 
     // First run: open the settings window so the user can set things up.
     showWindow();
