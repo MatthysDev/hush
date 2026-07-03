@@ -1,6 +1,11 @@
 export type Mod = 'ctrl' | 'alt' | 'cmd' | 'shift';
 export type Combo = { mods: Mod[]; key: string };
-export type Mode = 'hold' | 'toggle';
+// auto: detects the gesture automatically, mirroring Wispr — HOLD = push-to-talk
+//   (muted while held); DOUBLE-TAP starts and latches (stays muted after you let
+//   go); a single TAP then stops. This is the do-everything default.
+// hold: only push-to-talk (muted strictly while held).
+// toggle: press flips mute on/off.
+export type Mode = 'auto' | 'hold' | 'toggle';
 
 export interface InputEngine {
   start(): void;
@@ -14,6 +19,11 @@ export interface InputEngine {
 // this narrow contract; the concrete RPC client lives in discord-mute.ts.
 export interface DiscordMuter {
   setMute(on: boolean): Promise<void>;
+  // The user's current Discord self-mute state, or null if unknown (not
+  // connected / query failed). Hush reads this before muting so that releasing
+  // push-to-talk restores the prior state instead of unmuting someone who was
+  // already muted. Optional so lightweight fakes needn't implement it.
+  getMute?(): Promise<boolean | null>;
 }
 
 // Credentials for the local Discord RPC connection (from the Discord dev portal).

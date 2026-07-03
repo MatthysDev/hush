@@ -265,6 +265,21 @@ export class DiscordRpcMuter implements DiscordMuter {
     }
   }
 
+  // The user's current self-mute state in Discord, or null if we can't tell
+  // (not connected / query failed). Callers treat null as "unknown → don't
+  // assume they were pre-muted".
+  async getMute(): Promise<boolean | null> {
+    // getVoiceSettings is optional on RpcClient — treat its absence as "unknown".
+    if (!this.client || this.state !== 'connected' || !this.client.getVoiceSettings) return null;
+    try {
+      const settings = await this.client.getVoiceSettings();
+      return settings.mute === true;
+    } catch (err) {
+      dbg('rpc: getMute failed', err instanceof Error ? err.message : String(err));
+      return null;
+    }
+  }
+
   async setMute(on: boolean): Promise<void> {
     if (!this.client || this.state !== 'connected') {
       dbg('rpc: setMute skipped (not connected)', { on });

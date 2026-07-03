@@ -462,11 +462,12 @@ const STEPS = [
       <div class="binding">
         <div class="binding-label"><strong>Mode</strong><span class="muted">comme dans Wispr</span></div>
         <div class="segment" id="ob-mode-seg">
-          <button type="button" data-mode="hold" class="active">Maintenir</button>
+          <button type="button" data-mode="auto" class="active">Auto</button>
+          <button type="button" data-mode="hold">Maintenir</button>
           <button type="button" data-mode="toggle">Bascule</button>
         </div>
       </div>
-      <div class="callout">🎯 <strong>Maintenir</strong> : Discord est coupé <strong>tant que tu tiens</strong> la touche. <strong>Bascule</strong> : <strong>1er appui</strong> coupe (et reste coupé), <strong>2e appui</strong> réactive. Si tu <em>tapes</em> ta touche (appui/ré-appui), choisis <strong>Bascule</strong> — sinon Discord ne se coupe qu'une fraction de seconde.</div>`,
+      <div class="callout">🎯 <strong>Auto</strong> (recommandé) détecte tout seul : tu <strong>tiens</strong> → push-to-talk ; tu <strong>double-tapes</strong> → mains-libres (Discord reste muet), un tap pour finir — comme Wispr. <strong>Maintenir</strong> : coupé tant que tu tiens. <strong>Bascule</strong> : 1er appui coupe, 2e réactive.</div>`,
     wire(root) {
       const btn = root.querySelector('#ob-cap-shortcut');
       btn.textContent = comboLabel(cfg.shortcut);
