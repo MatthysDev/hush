@@ -55,33 +55,16 @@ const els = {
   regenCodeBtn: $('regen-code-btn'),
 };
 
-// Route user-facing errors to the onboarding modal when it's open (its own
-// #ob-err slot sits above the overlay), otherwise to the main window's #err.
+// Show a user-facing error. When the onboarding modal is open its own #ob-err
+// slot (which sits above the overlay) carries the message and the main window's
+// #err is left blank; otherwise #err carries it.
 function showError(msg) {
   const obErr = $('ob-err');
-  const onboardingOpen = ob && ob.overlay && !ob.overlay.hidden;
-  if (onboardingOpen && obErr) {
-    obErr.textContent = msg;
-    obErr.hidden = !msg;
-    els.err.textContent = '';
-  } else {
-    els.err.textContent = msg;
-    if (obErr) { obErr.textContent = ''; obErr.hidden = true; }
-  }
+  const onboardingOpen = !!obErr && ob && ob.overlay && !ob.overlay.hidden;
+  els.err.textContent = onboardingOpen ? '' : msg;
+  if (obErr) { obErr.textContent = msg; obErr.hidden = !msg; }
 }
 function clearError() { showError(''); }
-
-// Element set for the main-window role controls. The onboarding step builds an
-// equivalent set with ob-* ids and passes it to the same wireRoleControls().
-const MAIN_ROLE_REFS = {
-  roleSeg: els.roleSeg, controllerPanel: els.controllerPanel,
-  discoverBtn: els.discoverBtn, hostList: els.hostList,
-  remoteHost: els.remoteHost, remotePort: els.remotePort, remoteCode: els.remoteCode,
-  remoteConnect: els.remoteConnect, remoteStatus: els.remoteStatus,
-  hostToggle: els.hostToggle, hostPanel: els.hostPanel,
-  hostAddrs: els.hostAddrs, hostPort: els.hostPort, hostCode: els.hostCode,
-  regenCodeBtn: els.regenCodeBtn,
-};
 
 function render() {
   els.capShortcut.textContent = comboLabel(cfg.shortcut);
@@ -90,29 +73,31 @@ function render() {
   }
   els.delay.value = String(cfg.unmuteDelayMs);
   els.delayVal.textContent = String(cfg.unmuteDelayMs);
-  els.launchAtLogin.checked = cfg.launchAtLogin !== false;
+  els.launchAtLogin.checked = cfg.launchAtLogin;
   if (document.activeElement !== els.rpcId) els.rpcId.value = cfg.discordRpc.clientId || '';
   if (document.activeElement !== els.rpcSecret) els.rpcSecret.value = cfg.discordRpc.clientSecret || '';
-  renderRole();
+  reflectRoleControls(els);
 }
 
-// Reflect cfg.role / cfg.remote / cfg.hostListen into the "Où est Discord ?" card.
-// 'host' takes priority in the UI: it's an add-on on top of "this machine", mutually
+// Reflect cfg.role / cfg.remote / cfg.hostListen into a set of role controls —
+// the main window (els) or the onboarding step's ob-* refs. Sibling of
+// wireRoleControls(refs), which wires the same set's events. 'host' takes
+// priority in the UI: it's an add-on on top of "this machine", mutually
 // exclusive with being a controller of a remote machine.
-function renderRole() {
+function reflectRoleControls(refs) {
   const hosting = cfg.role === 'host';
   const controllerSelected = cfg.role === 'controller';
-  for (const b of els.roleSeg.querySelectorAll('button')) {
+  for (const b of refs.roleSeg.querySelectorAll('button')) {
     b.classList.toggle('active', b.dataset.role === (controllerSelected ? 'controller' : 'local'));
   }
-  els.controllerPanel.hidden = !controllerSelected;
-  els.hostToggle.checked = hosting;
-  els.hostPanel.hidden = !hosting;
-  if (document.activeElement !== els.remoteHost) els.remoteHost.value = cfg.remote.host || '';
-  if (document.activeElement !== els.remotePort) els.remotePort.value = String(cfg.remote.port || 8698);
-  if (document.activeElement !== els.remoteCode) els.remoteCode.value = cfg.remote.pairingCode || '';
-  if (document.activeElement !== els.hostPort) els.hostPort.value = String(cfg.hostListen.port || 8698);
-  els.hostCode.value = cfg.hostListen.pairingCode || '';
+  refs.controllerPanel.hidden = !controllerSelected;
+  refs.hostToggle.checked = hosting;
+  refs.hostPanel.hidden = !hosting;
+  if (document.activeElement !== refs.remoteHost) refs.remoteHost.value = cfg.remote.host || '';
+  if (document.activeElement !== refs.remotePort) refs.remotePort.value = String(cfg.remote.port || 8698);
+  if (document.activeElement !== refs.remoteCode) refs.remoteCode.value = cfg.remote.pairingCode || '';
+  if (document.activeElement !== refs.hostPort) refs.hostPort.value = String(cfg.hostListen.port || 8698);
+  refs.hostCode.value = cfg.hostListen.pairingCode || '';
 }
 
 async function refreshHostAddrs(refs) {
@@ -548,21 +533,9 @@ const STEPS = [
         hostCode: root.querySelector('#ob-host-code'),
         regenCodeBtn: root.querySelector('#ob-regen-code-btn'),
       };
-      // Reflect current cfg into the freshly-rendered controls.
-      const controller = cfg.role === 'controller';
-      const hosting = cfg.role === 'host';
-      for (const b of refs.roleSeg.querySelectorAll('button')) {
-        b.classList.toggle('active', b.dataset.role === (controller ? 'controller' : 'local'));
-      }
-      refs.controllerPanel.hidden = !controller;
-      refs.hostToggle.checked = hosting;
-      refs.hostPanel.hidden = !hosting;
-      refs.remoteHost.value = cfg.remote.host || '';
-      refs.remotePort.value = String(cfg.remote.port || 8698);
-      refs.remoteCode.value = cfg.remote.pairingCode || '';
-      refs.hostPort.value = String(cfg.hostListen.port || 8698);
-      refs.hostCode.value = cfg.hostListen.pairingCode || '';
-      if (hosting) refreshHostAddrs(refs);
+      // Reflect current cfg into the freshly-rendered controls, then wire them.
+      reflectRoleControls(refs);
+      if (cfg.role === 'host') refreshHostAddrs(refs);
       wireRoleControls(refs);
     },
   },
@@ -620,8 +593,8 @@ async function init() {
   document.title = brand.name;
   cfg = await window.hush.getConfig();
   render();
-  wireRoleControls(MAIN_ROLE_REFS);
-  if (cfg.role === 'host') refreshHostAddrs(MAIN_ROLE_REFS);
+  wireRoleControls(els);
+  if (cfg.role === 'host') refreshHostAddrs(els);
   refreshPermissions();
   setInterval(refreshPermissions, 2000);
   await initPermDrag(); // resolve drag availability before onboarding may render step 2

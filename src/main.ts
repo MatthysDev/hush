@@ -1,4 +1,4 @@
-import { app, Tray, Menu, BrowserWindow, nativeImage, ipcMain, shell, systemPreferences } from 'electron';
+import { app, Tray, Menu, BrowserWindow, nativeImage, ipcMain, shell, systemPreferences, MenuItemConstructorOptions } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
 import { uIOhook } from 'uiohook-napi';
@@ -103,6 +103,25 @@ function rpcLabel(state: 'disconnected' | 'connecting' | 'connected'): string {
   return state === 'connected' ? 'connecté ✓' : state === 'connecting' ? 'connexion…' : 'non connecté';
 }
 
+// The two "where is Discord" radio items, shared by the tray menu and the macOS
+// app menu so their wording and behaviour can't drift between the two surfaces.
+function discordLocationMenuItems(): MenuItemConstructorOptions[] {
+  return [
+    {
+      label: 'Cette machine',
+      type: 'radio',
+      checked: cfg.role === 'local',
+      click: () => switchDiscordLocation('local'),
+    },
+    {
+      label: cfg.remote.host ? `Autre machine — ${cfg.remote.host}` : 'Autre machine…',
+      type: 'radio',
+      checked: cfg.role === 'controller',
+      click: () => switchDiscordLocation('controller'),
+    },
+  ];
+}
+
 function refreshTrayMenu() {
   if (!tray) return;
   const status = !engineReady
@@ -119,18 +138,7 @@ function refreshTrayMenu() {
       { label: `Discord : ${rpcLabel(discord.getState())}`, enabled: false },
       { type: 'separator' },
       { label: 'Emplacement de Discord', enabled: false },
-      {
-        label: 'Cette machine',
-        type: 'radio',
-        checked: cfg.role === 'local',
-        click: () => switchDiscordLocation('local'),
-      },
-      {
-        label: cfg.remote.host ? `Autre machine — ${cfg.remote.host}` : 'Autre machine…',
-        type: 'radio',
-        checked: cfg.role === 'controller',
-        click: () => switchDiscordLocation('controller'),
-      },
+      ...discordLocationMenuItems(),
       { type: 'separator' },
       { label: 'Réglages…', click: showWindow },
       { label: 'Quitter Hush', click: () => app.quit() },
@@ -147,9 +155,6 @@ function refreshAppMenu(): void {
   const sig = `${cfg.role}|${cfg.remote.host}`;
   if (sig === lastAppMenuSig) return;
   lastAppMenuSig = sig;
-  const controllerLabel = cfg.remote.host
-    ? `Autre machine — ${cfg.remote.host}`
-    : 'Autre machine…';
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       {
@@ -175,18 +180,7 @@ function refreshAppMenu(): void {
       {
         label: 'Discord',
         submenu: [
-          {
-            label: 'Cette machine',
-            type: 'radio',
-            checked: cfg.role === 'local',
-            click: () => switchDiscordLocation('local'),
-          },
-          {
-            label: controllerLabel,
-            type: 'radio',
-            checked: cfg.role === 'controller',
-            click: () => switchDiscordLocation('controller'),
-          },
+          ...discordLocationMenuItems(),
           { type: 'separator' },
           { label: 'Réglages…', click: showWindow },
         ],
@@ -535,7 +529,8 @@ if (!app.requestSingleInstanceLock()) {
         const prev = cfg; // note: cfg is reassigned inside applyConfig(saved)
         const saved = saveConfig(next);
         applyRoleTransition(prev, saved);
-        applyLaunchAtLogin(saved); // apply a toggled launch-at-login immediately
+        // Only touch the OS login item when the toggle actually changed.
+        if (saved.launchAtLogin !== prev.launchAtLogin) applyLaunchAtLogin(saved);
         return { ok: true, config: saved };
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) };
