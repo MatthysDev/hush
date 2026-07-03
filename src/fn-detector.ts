@@ -57,11 +57,6 @@ export class FnDetector {
     this.pressed.delete(keycode);
   }
 
-  // Live keycodes physically down — for the FNPROBE debug trace only.
-  pressedKeys(): number[] {
-    return [...this.pressed];
-  }
-
   // Drive one poll tick with the current Fn-flag reading. Calls onPress/onRelease
   // at most once per tick.
   poll(fnDown: boolean): void {

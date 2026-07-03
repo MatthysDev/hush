@@ -7,7 +7,7 @@ export const DEFAULT_CONFIG: HushConfig = {
   // combo here and in Wispr → Settings → General → Shortcuts.
   shortcut: { mods: ['ctrl', 'alt'], key: '' },
   discordRpc: { clientId: '', clientSecret: '' },
-  mode: 'hold',
+  mode: 'auto',
   unmuteDelayMs: 0,
 };
 

@@ -2,7 +2,6 @@ import { uIOhook } from 'uiohook-napi';
 import { InputEngine } from './types';
 import { fnAvailable, isFnDown } from './fn-key';
 import { FnDetector } from './fn-detector';
-import { dbg } from './debug';
 
 const POLL_MS = 16; // ~60 Hz — snappy, and a CGEventSourceFlagsState call is cheap.
 
@@ -28,14 +27,8 @@ export class FnInputEngine implements InputEngine {
   private readonly onKeyUp: (e: UiohookEvent) => void;
 
   constructor() {
-    this.onKeyDown = (e) => {
-      this.detector.keyDown(e.keycode);
-      dbg('FNPROBE down', e.keycode, 'pressed=', this.detector.pressedKeys().join(','));
-    };
-    this.onKeyUp = (e) => {
-      this.detector.keyUp(e.keycode);
-      dbg('FNPROBE up', e.keycode, 'pressed=', this.detector.pressedKeys().join(','));
-    };
+    this.onKeyDown = (e) => this.detector.keyDown(e.keycode);
+    this.onKeyUp = (e) => this.detector.keyUp(e.keycode);
   }
 
   onPress(cb: () => void): void { this.pressCb = cb; }

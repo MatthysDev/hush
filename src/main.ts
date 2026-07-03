@@ -79,6 +79,10 @@ function rpcLabel(state: 'disconnected' | 'connecting' | 'connected'): string {
   return state === 'connected' ? 'connecté ✓' : state === 'connecting' ? 'connexion…' : 'non connecté';
 }
 
+function modeLabel(mode: HushConfig['mode']): string {
+  return mode === 'auto' ? 'Auto' : mode === 'hold' ? 'Maintenir' : 'Bascule';
+}
+
 function refreshTrayMenu() {
   if (!tray) return;
   const status = !engineReady
@@ -91,7 +95,7 @@ function refreshTrayMenu() {
       { label: `${BRAND.name} — ${status}`, enabled: false },
       { type: 'separator' },
       { label: `Raccourci : ${comboLabel(cfg.shortcut)}`, enabled: false },
-      { label: `Mode : ${cfg.mode === 'hold' ? 'Maintenir' : 'Bascule'}`, enabled: false },
+      { label: `Mode : ${modeLabel(cfg.mode)}`, enabled: false },
       { label: `Discord : ${rpcLabel(discord.getState())}`, enabled: false },
       { type: 'separator' },
       { label: 'Réglages…', click: showWindow },
