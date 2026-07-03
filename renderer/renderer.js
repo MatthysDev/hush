@@ -54,6 +54,22 @@ const els = {
   regenCodeBtn: $('regen-code-btn'),
 };
 
+// Route user-facing errors to the onboarding modal when it's open (its own
+// #ob-err slot sits above the overlay), otherwise to the main window's #err.
+function showError(msg) {
+  const obErr = $('ob-err');
+  const onboardingOpen = ob && ob.overlay && !ob.overlay.hidden;
+  if (onboardingOpen && obErr) {
+    obErr.textContent = msg;
+    obErr.hidden = !msg;
+    els.err.textContent = '';
+  } else {
+    els.err.textContent = msg;
+    if (obErr) { obErr.textContent = ''; obErr.hidden = true; }
+  }
+}
+function clearError() { showError(''); }
+
 // Element set for the main-window role controls. The onboarding step builds an
 // equivalent set with ob-* ids and passes it to the same wireRoleControls().
 const MAIN_ROLE_REFS = {
@@ -115,7 +131,7 @@ function syncRpcInputs() {
 async function captureInto(field, btnEl) {
   if (armedField) return; // one at a time
   armedField = field;
-  els.err.textContent = '';
+  clearError();
   btnEl.classList.add('armed');
   btnEl.textContent = 'Appuie…';
 
@@ -125,9 +141,9 @@ async function captureInto(field, btnEl) {
     cfg[field] = res.combo;
     await persist();
   } else if (res.reason === 'unsupported') {
-    els.err.textContent = 'Touche non gérée — utilise une lettre, un chiffre ou F1–F24 (avec ⌃⌥⌘⇧ en option).';
+    showError('Touche non gérée — utilise une lettre, un chiffre ou F1–F24 (avec ⌃⌥⌘⇧ en option).');
   } else if (res.reason === 'timeout') {
-    els.err.textContent = 'Rien capté. Active « Surveillance de la saisie » pour Hush, puis relance l\'app.';
+    showError('Rien capté. Active « Surveillance de la saisie » pour Hush, puis relance l\'app.');
   }
 
   btnEl.classList.remove('armed');
@@ -252,10 +268,10 @@ function wireRoleControls(refs) {
 
 async function persist() {
   syncRpcInputs();
-  els.err.textContent = '';
+  clearError();
   const res = await window.hush.saveConfig(cfg);
   if (!res.ok) {
-    els.err.textContent = translateConfigError(res.error);
+    showError(translateConfigError(res.error));
     return false;
   }
   cfg = res.config;

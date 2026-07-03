@@ -75,6 +75,9 @@ let cfg: HushConfig = loadConfig();
 let engineReady = false;
 let active = false;
 let capturing = false;
+// Signature (role|remote-host) refreshAppMenu() last rebuilt for — lets it skip
+// rebuilding the macOS app menu on pushStatus() calls where neither changed.
+let lastAppMenuSig: string | null = null;
 
 function trayImage(name: 'trayIdleTemplate' | 'trayActiveTemplate') {
   const img = nativeImage.createFromPath(path.join(ASSETS, `${name}.png`));
@@ -141,6 +144,9 @@ function refreshTrayMenu() {
 // fields — needed to paste the Discord Client ID / Secret.
 function refreshAppMenu(): void {
   if (process.platform !== 'darwin') return;
+  const sig = `${cfg.role}|${cfg.remote.host}`;
+  if (sig === lastAppMenuSig) return;
+  lastAppMenuSig = sig;
   const controllerLabel = cfg.remote.host
     ? `Autre machine — ${cfg.remote.host}`
     : 'Autre machine…';
