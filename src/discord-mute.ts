@@ -168,6 +168,9 @@ export class DiscordRpcMuter implements DiscordMuter {
     this.state = 'connecting';
     this.lastError = null;
     await this.disconnect();
+    // A newer connect() may have started while we awaited the teardown above —
+    // bail before touching this.client so the newest attempt owns the socket.
+    if (gen !== this.generation) return false;
     this.closing = false;
 
     try {
