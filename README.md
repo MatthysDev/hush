@@ -84,6 +84,23 @@ That's the whole trick: **detect the shortcut, mute Discord over RPC.** Because
 nothing is synthesized, there are no leaked modifiers, no self-observation loops,
 and no keystrokes for anything to ignore.
 
+## Dual-PC setup (Discord on another machine)
+
+Coding on one machine but running Discord on another? Hush can mute the *remote*
+Discord over your LAN:
+
+1. **On the machine with Discord** — open Hush, tick **"This machine hosts Discord
+   for another device"**, note the shown **LAN IP** + **pairing code**, and connect
+   its Discord RPC as usual.
+2. **On the machine where you dictate** — choose **"Discord is on another machine"**,
+   pick the discovered host (or type its IP), paste the **pairing code**, and click
+   **Connect**.
+3. Hold your shortcut as always — the *other* machine's Discord mutes, and unmutes on
+   release. If the link drops, the host auto-unmutes so you're never stuck muted.
+
+Both machines must be on the **same local network**. The link is LAN-only and gated
+by the pairing code — no cloud, nothing exposed to the internet.
+
 ## Architecture
 
 ```
@@ -98,7 +115,13 @@ src/
 ├── brand.ts         # Name, taglines, color palette
 ├── debug.ts         # Opt-in debug logging
 ├── preload.ts       # contextBridge IPC surface for the settings window
-└── types.ts         # Shared types (Combo, Mode, HushConfig, DiscordMuter, …)
+├── types.ts         # Shared types (Combo, Mode, HushConfig, DiscordMuter, …)
+├── mute-protocol.ts # LAN wire protocol + transport seam (controller ↔ host)
+├── mute-client.ts   # RemoteDiscordMuter: controller-side muter over the LAN
+├── mute-server.ts   # MuteServer: host-side relay to local Discord (fail-safe)
+├── mute-transport.ts# Real WebSocket adapters (ws) for the seam
+├── discovery.ts     # Optional mDNS host advertise/browse (bonjour-service)
+└── net.ts           # LAN IPv4 list + pairing-code generator
 
 renderer/            # Settings window + onboarding tutorial (plain HTML/CSS/JS)
 tests/               # vitest unit tests (orchestrator, discord-mute, trigger-detector, config)
