@@ -1,8 +1,9 @@
 import { app, Tray, Menu, BrowserWindow, nativeImage, ipcMain, shell, systemPreferences } from 'electron';
 import * as path from 'path';
+import * as os from 'os';
 import { uIOhook } from 'uiohook-napi';
 import { BRAND } from './brand';
-import { Combo, HushConfig, InputEngine, Mod } from './types';
+import { Combo, DiscordMuter, HushConfig, InputEngine, Mod } from './types';
 import { loadConfig, saveConfig } from './store';
 import { comboLabel, normalizeMods, isFnCombo } from './combo';
 import { FnInputEngine } from './fn-input';
@@ -16,6 +17,11 @@ import {
   isUiohookEscape,
   uiohookKeyToKey,
 } from './input-engine';
+import { RemoteDiscordMuter } from './mute-client';
+import { MuteServer } from './mute-server';
+import { wsClientFactory, WsServerListener } from './mute-transport';
+import { lanAddresses, generatePairingCode } from './net';
+import { advertiseHost, browseHosts, DiscoveredHost } from './discovery';
 
 interface MacPermissions {
   getAuthStatus(type: string): string;
@@ -51,6 +57,11 @@ let win: BrowserWindow | null = null;
 // Mutes Discord over RPC (the only approach Discord honors). Shared across
 // config reloads; reconnected when credentials change.
 const discord = new DiscordRpcMuter();
+// Controller-side muter (role === 'controller'). Talks to a remote host over the LAN.
+const remote = new RemoteDiscordMuter(wsClientFactory);
+// Host-side relay (role === 'host'). Lazily created in startHost().
+let muteServer: MuteServer | null = null;
+let stopAdvertise: (() => void) | null = null;
 let orchestrator: Orchestrator | null = null;
 let input: InputEngine | null = null;
 let cfg: HushConfig = loadConfig();
@@ -68,8 +79,10 @@ function pushStatus() {
   win?.webContents.send('status', {
     active,
     engineReady,
+    role: cfg.role,
     rpc: discord.getState(),
     rpcError: discord.getError(),
+    remote: { state: remote.getState(), error: remote.getError() },
   });
   if (tray) tray.setImage(trayImage(active ? 'trayActiveTemplate' : 'trayIdleTemplate'));
   refreshTrayMenu();
@@ -104,10 +117,23 @@ function applyConfig(next: HushConfig) {
   // Tear down the previous engine without leaving Discord muted.
   void orchestrator?.forceRelease();
   input?.stop();
+  input = null;
 
   cfg = next;
   active = false;
-  orchestrator = new Orchestrator(discord, cfg, (isActive) => {
+
+  // The host never runs a shortcut listener — it only relays remote commands.
+  if (cfg.role === 'host') {
+    orchestrator = null;
+    engineReady = true; // nothing to arm; report ready so the UI isn't alarmed
+    dbg('engine: host role — no local shortcut listener');
+    pushStatus();
+    return;
+  }
+
+  // local → mute the Discord on this machine; controller → mute the remote host.
+  const muter: DiscordMuter = cfg.role === 'controller' ? remote : discord;
+  orchestrator = new Orchestrator(muter, cfg, (isActive) => {
     active = isActive;
     pushStatus();
   });
@@ -123,11 +149,8 @@ function applyConfig(next: HushConfig) {
     engineReady = false;
   }
   dbg('engine start', {
-    logFile: LOG_FILE,
-    mode: cfg.mode,
-    shortcut: comboLabel(cfg.shortcut),
-    discordRpc: discord.getState(),
-    engineReady,
+    logFile: LOG_FILE, mode: cfg.mode, role: cfg.role,
+    shortcut: comboLabel(cfg.shortcut), engineReady,
   });
   pushStatus();
 }
@@ -158,6 +181,28 @@ async function connectDiscord(): Promise<void> {
 
   // Discord probably wasn't up yet — retry quietly until it is.
   if (!ok) rpcRetryTimer = setTimeout(() => { void connectDiscord(); }, 15000);
+  pushStatus();
+}
+
+// Host role: connect local Discord RPC, start the LAN relay, advertise via mDNS.
+function startHost(): void {
+  stopHost();
+  muteServer = new MuteServer(discord, new WsServerListener(), cfg.hostListen.pairingCode);
+  muteServer.start(cfg.hostListen.port);
+  stopAdvertise = advertiseHost(cfg.hostListen.port, `Hush @ ${os.hostname()}`);
+  dbg('host: started', { port: cfg.hostListen.port });
+}
+
+function stopHost(): void {
+  if (muteServer) { muteServer.stop(); muteServer = null; }
+  if (stopAdvertise) { stopAdvertise(); stopAdvertise = null; }
+}
+
+// Controller role: (re)connect the remote muter from config.
+function connectRemote(): void {
+  remote.disconnect();
+  if (cfg.role !== 'controller' || !cfg.remote.host) return;
+  remote.connect(cfg.remote.host, cfg.remote.port, cfg.remote.pairingCode);
   pushStatus();
 }
 
@@ -263,6 +308,8 @@ function captureCombo(): Promise<CaptureResult> {
 function cleanup() {
   void orchestrator?.forceRelease();
   input?.stop();
+  remote.disconnect();
+  stopHost();
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -288,7 +335,9 @@ if (!app.requestSingleInstanceLock()) {
     tray.on('click', showWindow);
 
     applyConfig(cfg);
-    void connectDiscord(); // best-effort auto-connect from stored credentials
+    if (cfg.role === 'host') { void connectDiscord(); startHost(); }
+    else if (cfg.role === 'controller') { connectRemote(); }
+    else { void connectDiscord(); } // best-effort auto-connect from stored credentials
 
     // First run: open the settings window so the user can set things up.
     showWindow();
@@ -298,15 +347,20 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle('brand:get', () => ({ name: BRAND.name, tagline: BRAND.taglineFr }));
     ipcMain.handle('config:set', (_e, next: HushConfig) => {
       try {
-        const prev = cfg;
+        const prev = cfg; // note: cfg is reassigned inside applyConfig(saved)
         const saved = saveConfig(next);
         applyConfig(saved);
-        // Reconnect the RPC only when the credentials actually changed.
-        if (
-          saved.discordRpc.clientId !== prev.discordRpc.clientId ||
-          saved.discordRpc.clientSecret !== prev.discordRpc.clientSecret
-        ) {
-          void connectDiscord();
+
+        // Tear down anything from the previous role, then bring up the new one.
+        stopHost();
+        if (saved.role === 'host') { void connectDiscord(); startHost(); }
+        else if (saved.role === 'controller') { void discord.disconnect(); connectRemote(); }
+        else {
+          remote.disconnect();
+          if (
+            saved.discordRpc.clientId !== prev.discordRpc.clientId ||
+            saved.discordRpc.clientSecret !== prev.discordRpc.clientSecret
+          ) void connectDiscord();
         }
         return { ok: true, config: saved };
       } catch (err) {
@@ -337,6 +391,20 @@ if (!app.requestSingleInstanceLock()) {
       await connectDiscord();
       return { state: discord.getState(), error: discord.getError() };
     });
+    ipcMain.handle('net:lan-info', () => ({
+      addresses: lanAddresses(),
+      hostname: os.hostname(),
+    }));
+    ipcMain.handle('net:gen-code', () => generatePairingCode());
+    ipcMain.handle('net:remote-status', () => ({
+      state: remote.getState(), error: remote.getError(),
+    }));
+    // Browse for hosts for a bounded window, collecting unique results.
+    ipcMain.handle('net:discover', () => new Promise<DiscoveredHost[]>((resolve) => {
+      const found = new Map<string, DiscoveredHost>();
+      const stop = browseHosts((h) => found.set(`${h.host}:${h.port}`, h));
+      setTimeout(() => { stop(); resolve([...found.values()]); }, 2500);
+    }));
   });
 
   // Watchdog: never leave Discord muted on quit/crash.
