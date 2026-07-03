@@ -85,6 +85,11 @@ export class DiscordRpcMuter implements DiscordMuter {
   // (overlapping connect() calls, or a socket drop mid-handshake) recognize
   // it's stale and bail out without clobbering a newer attempt's state.
   private generation = 0;
+  // Snapshot/restore of the user's own voice state so a hold/release returns them
+  // to exactly what they had before Hush muted — covering self-mute AND deafen.
+  // heldByHush gates the snapshot to the entering edge (idempotent under repeats).
+  private heldByHush = false;
+  private priorState: { mute: boolean; deaf: boolean } | null = null;
 
   constructor(deps: Partial<Deps> = {}) {
     this.deps = {
@@ -265,32 +270,62 @@ export class DiscordRpcMuter implements DiscordMuter {
     }
   }
 
-  // The user's current self-mute state in Discord, or null if we can't tell
-  // (not connected / query failed). Callers treat null as "unknown → don't
-  // assume they were pre-muted".
-  async getMute(): Promise<boolean | null> {
-    // getVoiceSettings is optional on RpcClient — treat its absence as "unknown".
+  // The user's current { mute, deaf } self-state, or null if we can't tell
+  // (not connected / query unsupported / failed). Never throws.
+  private async readVoiceState(): Promise<{ mute: boolean; deaf: boolean } | null> {
     if (!this.client || this.state !== 'connected' || !this.client.getVoiceSettings) return null;
     try {
-      const settings = await this.client.getVoiceSettings();
-      return settings.mute === true;
+      const s = await this.client.getVoiceSettings();
+      return { mute: s.mute === true, deaf: s.deaf === true };
     } catch (err) {
-      dbg('rpc: getMute failed', err instanceof Error ? err.message : String(err));
+      dbg('rpc: readVoiceState failed', err instanceof Error ? err.message : String(err));
       return null;
     }
   }
 
+  // The user's current self-mute state, or null if unknown. Delegates to the
+  // richer readVoiceState so there is one source of truth for reading state.
+  async getMute(): Promise<boolean | null> {
+    const s = await this.readVoiceState();
+    return s ? s.mute : null;
+  }
+
+  // Mute for dictation, remembering the user's prior voice state so release can
+  // restore it. On the entering edge we snapshot { mute, deaf } and assert only
+  // mute:true (deaf is left untouched during the hold). On release we restore the
+  // exact snapshot — so someone already muted or deafened is left that way. A
+  // failed snapshot degrades to a plain unmute (best-effort, never worse).
   async setMute(on: boolean): Promise<void> {
     if (!this.client || this.state !== 'connected') {
       dbg('rpc: setMute skipped (not connected)', { on });
       return;
     }
     try {
-      await this.client.setVoiceSettings({ mute: on });
-      dbg('rpc: setMute', { on });
+      if (on) {
+        if (!this.heldByHush) {
+          this.priorState = await this.readVoiceState();
+          this.heldByHush = true;
+        }
+        await this.client.setVoiceSettings({ mute: true });
+        dbg('rpc: setMute', { on: true });
+      } else if (this.heldByHush) {
+        const prior = this.priorState;
+        this.heldByHush = false;
+        this.priorState = null;
+        if (prior) {
+          await this.client.setVoiceSettings({ mute: prior.mute, deaf: prior.deaf });
+          dbg('rpc: restore prior voice state', prior);
+        } else {
+          await this.client.setVoiceSettings({ mute: false });
+          dbg('rpc: setMute', { on: false });
+        }
+      } else {
+        // Never held a Hush-mute → nothing of ours to undo; don't strip state.
+        dbg('rpc: setMute(false) ignored (not holding)');
+      }
     } catch (err) {
       // A dropped socket (Discord quit mid-session) lands here — degrade to
-      // disconnected so the next launch/attempt reconnects instead of throwing.
+      // disconnected so the next attempt reconnects instead of throwing.
       this.state = 'disconnected';
       this.lastError = err instanceof Error ? err.message : String(err);
       dbg('rpc: setMute failed', this.lastError);
