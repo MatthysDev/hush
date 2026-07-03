@@ -48,7 +48,8 @@
     <!-- Cross-machine role -->
     <section class="card" id="role-card">
       <h2>Où est Discord ?</h2>
-      <p class="muted">Discord tourne sur cette machine, ou sur une autre (setup double PC) — Hush le coupe dans les deux cas.</p>
+      <p class="muted">Sur cette machine, ou sur un autre PC (setup double PC) — Hush le coupe dans les deux cas.</p>
+      <div class="callout">💡 <strong>Setup double PC ?</strong> Tu dictes sur ce Mac mais Discord tourne sur ton autre PC ? Installe Hush <strong>sur les deux</strong> : le PC qui a Discord devient l'<strong>hôte</strong>, celui où tu dictes devient le <strong>contrôleur</strong>. Les deux doivent être sur le <strong>même réseau (Wi-Fi/box)</strong>.</div>
 
       <div class="binding">
         <div class="binding-label"><strong>Emplacement de Discord</strong></div>
@@ -59,13 +60,18 @@
       </div>
 
       <div id="controller-panel" hidden>
-        <p class="hint">Choisis le PC qui fait tourner Discord, ou saisis son IP.</p>
+        <p class="hint">Ce Mac va commander le Discord de l'autre PC. Trois étapes :</p>
+        <ol>
+          <li>Sur le PC qui a Discord : ouvre Hush, coche <strong>« Cette machine héberge Discord »</strong> → il affiche son <strong>IP</strong> et un <strong>code d'appairage</strong>.</li>
+          <li>Ici, choisis l'hôte trouvé (ou saisis son IP) et recopie le code.</li>
+          <li><strong>Connecter</strong>. Ensuite, tiens ton raccourci : le Discord de l'autre PC se coupe.</li>
+        </ol>
         <div class="row-actions">
           <button class="ghost" id="discover-btn" type="button">Rechercher les hôtes…</button>
         </div>
         <ul id="host-list"></ul>
         <div class="field">
-          <label for="remote-host">Adresse (IP)</label>
+          <label for="remote-host">Adresse (IP) du PC hôte</label>
           <input id="remote-host" type="text" spellcheck="false" autocomplete="off" placeholder="192.168.1.20" />
         </div>
         <div class="field">
@@ -80,6 +86,7 @@
           <button class="primary" id="remote-connect" type="button">Connecter</button>
           <span id="remote-status" class="pill pill-off">Non connecté</span>
         </div>
+        <p class="hint" id="remote-help" hidden></p>
       </div>
 
       <hr />
@@ -89,7 +96,11 @@
         <input type="checkbox" id="host-toggle" />
       </div>
       <div id="host-panel" hidden>
-        <p class="hint">Recopie ces infos sur l'autre machine (le contrôleur) :</p>
+        <p class="hint">Ce PC va relayer les ordres du contrôleur vers son Discord local. Deux choses :</p>
+        <ol>
+          <li>Connecte Discord ci-dessus (section <strong>Discord</strong>) comme d'habitude.</li>
+          <li>Recopie l'<strong>adresse</strong> et le <strong>code</strong> ci-dessous sur l'autre machine, puis <strong>laisse Hush ouvert</strong> ici.</li>
+        </ol>
         <p class="muted">Adresse(s) : <strong id="host-addrs">—</strong></p>
         <div class="field">
           <label for="host-port">Port</label>

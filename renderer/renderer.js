@@ -303,10 +303,21 @@ function setStatus(s) {
   // Live remote-connection status (controller role) from the main process.
   if (s.role === 'controller') {
     const r = s.remote || {};
-    if (r.state === 'connected') { els.remoteStatus.textContent = 'Connecté ✓'; els.remoteStatus.className = 'pill pill-ok'; }
-    else if (r.state === 'connecting') { els.remoteStatus.textContent = 'Connexion…'; els.remoteStatus.className = 'pill pill-warn'; }
-    else if (r.error) { els.remoteStatus.textContent = `Échec : ${r.error}`; els.remoteStatus.className = 'pill pill-warn'; }
-    else { els.remoteStatus.textContent = 'Hôte injoignable'; els.remoteStatus.className = 'pill pill-off'; }
+    const help = $('remote-help');
+    if (r.state === 'connected') {
+      els.remoteStatus.textContent = 'Connecté ✓'; els.remoteStatus.className = 'pill pill-ok';
+      if (help) help.hidden = true;
+    } else if (r.state === 'connecting') {
+      els.remoteStatus.textContent = 'Connexion…'; els.remoteStatus.className = 'pill pill-warn';
+      if (help) help.hidden = true;
+    } else {
+      els.remoteStatus.textContent = r.error ? `Échec : ${r.error}` : 'Hôte injoignable';
+      els.remoteStatus.className = r.error ? 'pill pill-warn' : 'pill pill-off';
+      if (help) {
+        help.textContent = "Vérifie : Hush ouvert sur le PC hôte · les deux machines sur le même réseau · IP et code exacts · le pare-feu du PC autorise le port " + (cfg.remote?.port || 8698) + '.';
+        help.hidden = false;
+      }
+    }
   }
 }
 
@@ -382,6 +393,16 @@ const STEPS = [
     body: `<p>Un seul réglage : ton <strong>push-to-talk</strong>. Mets <strong>exactement</strong> le même raccourci que dans Wispr Flow (Réglages → General → Shortcuts).</p>
       <p>Hush ne simule rien : tu presses ce raccourci toi-même, Wispr dicte comme d'habitude, et Hush coupe Discord tant que tu le tiens.</p>
       <p>Tu le règles dans la fenêtre principale, juste derrière — clique sur le bouton de raccourci et presse ta touche.</p>`,
+  },
+  {
+    glyph: '🖥️',
+    title: 'Discord sur un autre PC ? (optionnel)',
+    body: `<p>Setup <strong>double PC</strong> — tu dictes ici mais Discord tourne sur une autre machine ? Hush sait couper ce Discord <strong>à distance</strong>, sur ton réseau local.</p>
+      <ol>
+        <li>Installe Hush aussi sur le PC qui a Discord, et coche <strong>« Cette machine héberge Discord »</strong> → il affiche une <strong>IP</strong> + un <strong>code d'appairage</strong>.</li>
+        <li>Ici, dans <strong>« Où est Discord ? »</strong> (fenêtre principale), choisis <strong>Autre machine</strong>, recopie l'IP et le code, puis <strong>Connecter</strong>.</li>
+      </ol>
+      <div class="callout">Les deux machines doivent être sur le <strong>même réseau</strong> (même Wi-Fi/box). En simple PC, ignore cette étape.</div>`,
   },
   {
     glyph: '✅',
