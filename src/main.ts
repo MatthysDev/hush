@@ -156,26 +156,52 @@ function applyConfig(next: HushConfig) {
 }
 
 let rpcRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let connectInFlight: Promise<void> | null = null;
+
+// Public entry point: coalesce concurrent callers onto one in-flight attempt so
+// two callers can't both spend the (single-use, server-rotated) refresh token.
+function connectDiscord(): Promise<void> {
+  if (connectInFlight) return connectInFlight;
+  connectInFlight = doConnectDiscord().finally(() => { connectInFlight = null; });
+  return connectInFlight;
+}
 
 // (Re)connect the Discord RPC from the current config. Best-effort: failures are
 // captured in the muter's state and surfaced via status, never thrown. Reuses a
 // cached OAuth token (no authorize popup) and, if Discord isn't running yet,
 // retries quietly so it connects on its own once Discord opens.
-async function connectDiscord(): Promise<void> {
+async function doConnectDiscord(): Promise<void> {
   if (rpcRetryTimer) { clearTimeout(rpcRetryTimer); rpcRetryTimer = null; }
-  const { clientId, clientSecret, accessToken } = cfg.discordRpc;
+  const { clientId, clientSecret } = cfg.discordRpc;
   if (!clientId || !clientSecret) {
     await discord.disconnect();
     pushStatus();
     return;
   }
   pushStatus(); // reflect 'connecting'
-  const ok = await discord.connect(clientId, clientSecret, accessToken);
+  const ok = await discord.connect(clientId, clientSecret, {
+    accessToken: cfg.discordRpc.accessToken,
+    refreshToken: cfg.discordRpc.refreshToken,
+    tokenExpiresAt: cfg.discordRpc.tokenExpiresAt,
+  });
 
-  // Persist a freshly-obtained token so the next launch reconnects silently.
-  const tok = discord.getAccessToken();
-  if (ok && tok && tok !== cfg.discordRpc.accessToken) {
-    cfg = { ...cfg, discordRpc: { ...cfg.discordRpc, accessToken: tok } };
+  // Persist the full token set (access + rotated refresh + expiry) so the next
+  // launch — and every silent renewal — reconnects without a re-authorize popup.
+  // Do this even when `ok` is false: a refresh may have rotated (and invalidated)
+  // the old token before a later step failed, and dropping that rotated token would
+  // force a popup on the next attempt.
+  const t = discord.getTokens();
+  if (t && (
+    t.accessToken !== cfg.discordRpc.accessToken ||
+    t.refreshToken !== cfg.discordRpc.refreshToken ||
+    t.tokenExpiresAt !== cfg.discordRpc.tokenExpiresAt
+  )) {
+    cfg = { ...cfg, discordRpc: {
+      ...cfg.discordRpc,
+      accessToken: t.accessToken,
+      refreshToken: t.refreshToken,
+      tokenExpiresAt: t.tokenExpiresAt,
+    } };
     try { saveConfig(cfg); } catch { /* noop */ }
   }
 
@@ -335,6 +361,19 @@ if (!app.requestSingleInstanceLock()) {
     tray.on('click', showWindow);
 
     applyConfig(cfg);
+    // Auto-reconnect when the local Discord RPC drops (Discord quits/restarts).
+    // Fires only on a real drop of a live session — never on an intentional
+    // disconnect, and never in the controller role (where the local RPC is never
+    // connected). If Discord is still restarting, the reconnect fails and the 15s
+    // retry loop takes over — so a Discord restart needs no manual reconnect.
+    discord.setOnDrop(() => {
+      dbg('rpc: dropped — scheduling reconnect');
+      if (rpcRetryTimer) { clearTimeout(rpcRetryTimer); rpcRetryTimer = null; }
+      rpcRetryTimer = setTimeout(() => { void connectDiscord(); }, 3000);
+    });
+
+    // Role-aware bring-up (cross-machine work): host connects local Discord +
+    // starts the relay, controller dials the remote host, local just connects.
     if (cfg.role === 'host') { void connectDiscord(); startHost(); }
     else if (cfg.role === 'controller') { connectRemote(); }
     else { void connectDiscord(); } // best-effort auto-connect from stored credentials
