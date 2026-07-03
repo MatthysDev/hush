@@ -38,6 +38,7 @@ export class WsServerListener implements ServerListener {
     wss.on('connection', (ws) => {
       alive.set(ws, true);
       ws.on('pong', () => alive.set(ws, true));
+      ws.on('error', (err) => dbg('ws-server: socket error', err.message));
       this.connCb({
         send: (data) => { if (ws.readyState === WebSocket.OPEN) ws.send(data); },
         close: () => { try { ws.close(); } catch { /* noop */ } },
@@ -56,6 +57,10 @@ export class WsServerListener implements ServerListener {
 
   close(): void {
     if (this.heartbeat) { clearInterval(this.heartbeat); this.heartbeat = null; }
-    if (this.wss) { try { this.wss.close(); } catch { /* noop */ } this.wss = null; }
+    if (this.wss) {
+      for (const ws of this.wss.clients) { try { ws.terminate(); } catch { /* noop */ } }
+      try { this.wss.close(); } catch { /* noop */ }
+      this.wss = null;
+    }
   }
 }
