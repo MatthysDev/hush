@@ -8,6 +8,8 @@ const bridge = {
   captureCombo: () => ipcRenderer.invoke('capture:combo'),
   openAccessibility: () => ipcRenderer.send('perm:open-accessibility'),
   openInputMonitoring: () => ipcRenderer.send('perm:open-input'),
+  canDragPermissions: () => ipcRenderer.invoke('perm:can-drag'),
+  startPermDrag: () => ipcRenderer.send('perm:startdrag'),
   openExternal: (url: string) => ipcRenderer.send('app:open-external', url),
   quit: () => ipcRenderer.send('app:quit'),
   onStatus: (cb: (s: unknown) => void) => ipcRenderer.on('status', (_e, s) => cb(s)),

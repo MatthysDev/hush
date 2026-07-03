@@ -343,6 +343,22 @@ async function refreshPermissions() {
   const i = $('ob-input'); if (i) setPill(i, p.inputMonitoring, 'Surveillance de la saisie');
 }
 
+// macOS only, installed app only: let the user drag Hush straight into the
+// Privacy list. Falls back silently to the "Ouvrir" buttons when unavailable.
+let permCanDrag = false;
+function wirePermDrag(el) {
+  if (!el || el.dataset.wired) return;
+  el.dataset.wired = '1';
+  // Native file drag is started by the main process; prevent the default (which
+  // would try to drag the <img> as a web image).
+  el.addEventListener('dragstart', (e) => { e.preventDefault(); window.hush.startPermDrag(); });
+}
+async function initPermDrag() {
+  try { permCanDrag = await window.hush.canDragPermissions(); } catch { permCanDrag = false; }
+  const chip = $('perm-drag');
+  if (chip && permCanDrag) { chip.hidden = false; wirePermDrag(chip); }
+}
+
 // ---- Onboarding tutorial ----
 const STEPS = [
   {
@@ -357,10 +373,16 @@ const STEPS = [
     body: `<p>Hush a besoin de deux autorisations pour repérer quand tu tiens ton raccourci.</p>
       <div class="perm-row"><span id="ob-acc" class="pill pill-warn">Accessibilité : à activer</span><button class="ghost" id="ob-open-acc">Ouvrir</button></div>
       <div class="perm-row"><span id="ob-input" class="pill pill-warn">Surveillance de la saisie : à activer</span><button class="ghost" id="ob-open-input">Ouvrir</button></div>
-      <p style="margin-top:12px">Active <strong>Hush</strong> dans chaque volet. Si rien n'apparaît, l'entrée se crée dès le premier déclenchement.</p>`,
+      <p style="margin-top:12px">Active <strong>Hush</strong> dans chaque volet. Si rien n'apparaît, l'entrée se crée dès le premier déclenchement.</p>
+      <div class="perm-drag" data-permdrag hidden draggable="true" title="Glisse-moi dans la liste">
+        <img src="../assets/generated/icon-256.png" alt="" width="40" height="40" />
+        <div class="perm-drag-txt"><strong>Ou glisse Hush directement dans la liste</strong><span class="muted">Fais-moi glisser dans le volet ouvert, puis coche-moi.</span></div>
+      </div>`,
     wire(root) {
       root.querySelector('#ob-open-acc').onclick = () => window.hush.openAccessibility();
       root.querySelector('#ob-open-input').onclick = () => window.hush.openInputMonitoring();
+      const d = root.querySelector('[data-permdrag]');
+      if (d && permCanDrag) { d.hidden = false; wirePermDrag(d); }
       refreshPermissions();
     },
   },
@@ -461,6 +483,7 @@ async function init() {
   if (cfg.role === 'host') refreshHostAddrs();
   refreshPermissions();
   setInterval(refreshPermissions, 2000);
+  await initPermDrag(); // resolve drag availability before onboarding may render step 2
 
   let onboarded = false;
   try { onboarded = localStorage.getItem('hush.onboarded') === '1'; } catch { /* noop */ }
