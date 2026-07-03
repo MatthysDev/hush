@@ -98,8 +98,7 @@ export class RemoteDiscordMuter implements DiscordMuter {
   // out; we do the same the other way so a half-open link after sleep is caught
   // here and torn down, which fires onClose and the reconnect loop.
   private startHeartbeat(sock: ClientSocket): void {
-    this.clearHeartbeat();
-    this.awaitingPong = false;
+    this.clearHeartbeat();   // also resets awaitingPong
     this.stopHeartbeat = this.heartbeat(() => {
       if (this.sock !== sock) return;            // stale timer from an old socket
       if (this.awaitingPong) { sock.close(); return; } // missed a pong → dead link
