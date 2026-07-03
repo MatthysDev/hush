@@ -140,14 +140,18 @@ let rpcRetryTimer: ReturnType<typeof setTimeout> | null = null;
 // retries quietly so it connects on its own once Discord opens.
 async function connectDiscord(): Promise<void> {
   if (rpcRetryTimer) { clearTimeout(rpcRetryTimer); rpcRetryTimer = null; }
-  const { clientId, clientSecret, accessToken } = cfg.discordRpc;
+  const { clientId, clientSecret } = cfg.discordRpc;
   if (!clientId || !clientSecret) {
     await discord.disconnect();
     pushStatus();
     return;
   }
   pushStatus(); // reflect 'connecting'
-  const ok = await discord.connect(clientId, clientSecret, accessToken);
+  const ok = await discord.connect(clientId, clientSecret, {
+    accessToken: cfg.discordRpc.accessToken,
+    refreshToken: cfg.discordRpc.refreshToken,
+    tokenExpiresAt: cfg.discordRpc.tokenExpiresAt,
+  });
 
   // Persist a freshly-obtained token so the next launch reconnects silently.
   const tok = discord.getAccessToken();

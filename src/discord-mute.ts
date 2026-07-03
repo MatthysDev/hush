@@ -1,5 +1,7 @@
 import { DiscordMuter } from './types';
 import { dbg } from './debug';
+import * as realOauth from './discord-oauth';
+import { TokenSet, FetchLike } from './discord-oauth';
 
 // Real-flow Discord muting over the local RPC/IPC socket — the approach that
 // actually works, unlike synthesizing Discord's mute hotkey (Discord ignores
@@ -7,29 +9,43 @@ import { dbg } from './debug';
 //
 // Best-effort by design: if Discord is closed or the RPC never connected,
 // setMute is a logged no-op so nothing breaks.
+//
+// Auth: we keep a long-lived refresh token around (persisted by the caller)
+// and use it to renew silently — no popup after the very first authorize.
+// We also watch for the transport dropping (Discord quitting, socket dying)
+// so the caller can auto-reconnect instead of discovering it lazily on the
+// next setMute call.
 
-interface LoginOptions {
-  clientId: string;
-  clientSecret?: string;
-  scopes?: string[];
-  redirectUri?: string;
-  accessToken?: string;
-}
-
-interface RpcClient {
-  login(options: LoginOptions): Promise<unknown>;
+export interface RpcClient {
+  connect(clientId: string): Promise<unknown>;
+  request(cmd: string, args: Record<string, unknown>): Promise<any>;
+  authenticate(accessToken: string): Promise<unknown>;
   setVoiceSettings(settings: { mute?: boolean; deaf?: boolean }): Promise<unknown>;
-  getVoiceSettings(): Promise<{ mute?: boolean; deaf?: boolean }>;
+  getVoiceSettings?(): Promise<{ mute?: boolean; deaf?: boolean }>;
   destroy(): Promise<void>;
   on(event: string, cb: (...args: unknown[]) => void): void;
-  accessToken?: string;
 }
 
-interface RpcModule {
-  Client: new (opts: { transport: 'ipc' }) => RpcClient;
+interface OauthDeps {
+  exchangeCode: typeof realOauth.exchangeCode;
+  refreshTokens: typeof realOauth.refreshTokens;
+  isExpired: typeof realOauth.isExpired;
+}
+
+interface Deps {
+  createClient: () => RpcClient;
+  oauth: OauthDeps;
+  fetchImpl: FetchLike;
+  now: () => number;
 }
 
 export type RpcState = 'disconnected' | 'connecting' | 'connected';
+
+export type ConnectTokens = {
+  accessToken?: string;
+  refreshToken?: string;
+  tokenExpiresAt?: number;
+};
 
 const SCOPES = ['rpc', 'rpc.voice.write'];
 const REDIRECT = 'http://localhost';
@@ -39,6 +55,7 @@ const REDIRECT = 'http://localhost';
 // especially on Windows) — but still bounded so a wedged socket can't hang forever.
 const TOKEN_LOGIN_TIMEOUT_MS = 12000;
 const AUTHORIZE_TIMEOUT_MS = 120000;
+const CONNECT_TIMEOUT_MS = 10000;
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -49,16 +66,33 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   ]);
 }
 
+// discord-rpc ships no bundled types and pulls a native transport; require it
+// lazily so the app still boots if the dependency is somehow missing.
+function defaultCreateClient(): RpcClient {
+  const RPC = require('discord-rpc');
+  return new RPC.Client({ transport: 'ipc' });
+}
+
 export class DiscordRpcMuter implements DiscordMuter {
+  private deps: Deps;
   private client: RpcClient | null = null;
   private state: RpcState = 'disconnected';
   private lastError: string | null = null;
-  private accessToken: string | null = null;
+  private tokens: TokenSet | null = null;
+  private closing = false;
+  private onDrop: (() => void) | null = null;
 
-  // discord-rpc ships no bundled types and pulls a native transport; require it
-  // lazily so the app still boots if the dependency is somehow missing.
-  private load(): RpcModule {
-    return require('discord-rpc') as RpcModule;
+  constructor(deps: Partial<Deps> = {}) {
+    this.deps = {
+      createClient: deps.createClient ?? defaultCreateClient,
+      oauth: deps.oauth ?? {
+        exchangeCode: realOauth.exchangeCode,
+        refreshTokens: realOauth.refreshTokens,
+        isExpired: realOauth.isExpired,
+      },
+      fetchImpl: deps.fetchImpl ?? ((globalThis.fetch as unknown) as FetchLike),
+      now: deps.now ?? (() => Date.now()),
+    };
   }
 
   getState(): RpcState {
@@ -69,30 +103,50 @@ export class DiscordRpcMuter implements DiscordMuter {
     return this.lastError;
   }
 
-  // The OAuth token obtained (or reused) on the last successful connect. Persist
-  // this so the next launch reconnects silently — no Discord authorize prompt.
+  // The full token set obtained (or reused/rotated) on the last successful
+  // connect. Persist this so the next launch reconnects silently — no Discord
+  // authorize prompt, and no unnecessary refresh call if the token is fresh.
+  getTokens(): { accessToken: string; refreshToken: string; tokenExpiresAt: number } | null {
+    if (!this.tokens) return null;
+    return {
+      accessToken: this.tokens.accessToken,
+      refreshToken: this.tokens.refreshToken,
+      tokenExpiresAt: this.tokens.expiresAt,
+    };
+  }
+
+  // Backward-compat accessor.
   getAccessToken(): string | null {
-    return this.accessToken;
+    return this.tokens?.accessToken ?? null;
   }
 
   isConnected(): boolean {
     return this.state === 'connected';
   }
 
-  // Try to bring a fresh client up with the given login options. Returns the
-  // connected client on success, or throws.
-  private async open(options: LoginOptions, timeoutMs: number): Promise<RpcClient> {
-    const RPC = this.load();
-    const client = new RPC.Client({ transport: 'ipc' });
-    await withTimeout(client.login(options), timeoutMs, 'rpc login');
-    return client;
+  // Register a callback fired when the RPC transport drops unexpectedly
+  // (Discord quit, socket died) so the caller can auto-reconnect. Not called
+  // on an intentional disconnect().
+  setOnDrop(cb: () => void): void {
+    this.onDrop = cb;
   }
 
-  // Connect (or reconnect). Never throws — failures are captured in state/error
-  // so the caller can surface them without breaking anything. If `accessToken` is
-  // given it's tried first (silent, no prompt); otherwise (or on failure) the full
-  // OAuth authorize runs, which pops Discord's approval the first time only.
-  async connect(clientId: string, clientSecret: string, accessToken?: string): Promise<boolean> {
+  private handleDrop(): void {
+    if (this.closing) return;
+    this.state = 'disconnected';
+    dbg('rpc: disconnected (drop)');
+    this.onDrop?.();
+  }
+
+  // Connect (or reconnect). Never throws — failures are captured in
+  // state/error so the caller can surface them without breaking anything.
+  //
+  // Token acquisition, in priority order (cheapest/quietest first):
+  //   1. Cached access token, still valid → use it directly, no network.
+  //   2. Refresh token present → silent renewal via the token endpoint.
+  //   3. Neither (or refresh failed) → full OAuth authorize, which pops
+  //      Discord's approval popup the first time only.
+  async connect(clientId: string, clientSecret: string, tokens?: ConnectTokens): Promise<boolean> {
     if (!clientId || !clientSecret) {
       this.state = 'disconnected';
       this.lastError = 'client_id / client_secret manquants';
@@ -101,32 +155,58 @@ export class DiscordRpcMuter implements DiscordMuter {
     this.state = 'connecting';
     this.lastError = null;
     await this.disconnect();
+    this.closing = false;
 
-    // 1) Silent path: reuse a cached token (no authorize popup).
-    if (accessToken) {
-      try {
-        const client = await this.open({ clientId, accessToken }, TOKEN_LOGIN_TIMEOUT_MS);
-        this.client = client;
-        this.accessToken = accessToken;
-        this.state = 'connected';
-        dbg('rpc: connected (cached token)');
-        return true;
-      } catch (err) {
-        dbg('rpc: cached-token login failed, falling back to authorize',
-          err instanceof Error ? err.message : String(err));
-      }
-    }
-
-    // 2) Full OAuth authorize (prompts the first time / when the token expired).
     try {
-      const client = await this.open(
-        { clientId, clientSecret, scopes: SCOPES, redirectUri: REDIRECT },
-        AUTHORIZE_TIMEOUT_MS,
-      );
+      const client = this.deps.createClient();
       this.client = client;
-      this.accessToken = client.accessToken ?? null;
+      client.on('disconnected', () => this.handleDrop());
+
+      await withTimeout(client.connect(clientId), CONNECT_TIMEOUT_MS, 'rpc connect');
+
+      let ts: TokenSet;
+      if (tokens?.accessToken && !this.deps.oauth.isExpired(tokens.tokenExpiresAt, this.deps.now())) {
+        // 1) Cached token still valid — no network call needed.
+        ts = {
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken ?? '',
+          expiresAt: tokens.tokenExpiresAt ?? 0,
+        };
+      } else {
+        ts = null as unknown as TokenSet;
+        if (tokens?.refreshToken) {
+          // 2) Silent renewal via the refresh token.
+          try {
+            ts = await this.deps.oauth.refreshTokens(
+              this.deps.fetchImpl,
+              { clientId, clientSecret, refreshToken: tokens.refreshToken },
+              this.deps.now(),
+            );
+          } catch (err) {
+            dbg('rpc: token refresh failed, falling back to authorize',
+              err instanceof Error ? err.message : String(err));
+          }
+        }
+        if (!ts) {
+          // 3) Full OAuth authorize (prompts the first time / when refresh failed).
+          const { code } = await withTimeout(
+            client.request('AUTHORIZE', { scopes: SCOPES, client_id: clientId }),
+            AUTHORIZE_TIMEOUT_MS,
+            'rpc authorize',
+          );
+          ts = await this.deps.oauth.exchangeCode(
+            this.deps.fetchImpl,
+            { clientId, clientSecret, code, redirectUri: REDIRECT },
+            this.deps.now(),
+          );
+        }
+      }
+
+      await withTimeout(client.authenticate(ts.accessToken), TOKEN_LOGIN_TIMEOUT_MS, 'rpc authenticate');
+
+      this.tokens = ts;
       this.state = 'connected';
-      dbg('rpc: connected (authorized)');
+      dbg('rpc: connected');
       return true;
     } catch (err) {
       this.client = null;
@@ -155,6 +235,7 @@ export class DiscordRpcMuter implements DiscordMuter {
   }
 
   async disconnect(): Promise<void> {
+    this.closing = true;
     if (this.client) {
       try { await this.client.destroy(); } catch { /* noop */ }
     }
