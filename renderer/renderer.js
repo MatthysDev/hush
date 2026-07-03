@@ -37,6 +37,21 @@ const els = {
   rpcReconnect: $('rpc-reconnect'),
   openTuto: $('open-tuto'),
   replayTuto: $('replay-tuto'),
+  roleSeg: $('role-seg'),
+  controllerPanel: $('controller-panel'),
+  discoverBtn: $('discover-btn'),
+  hostList: $('host-list'),
+  remoteHost: $('remote-host'),
+  remotePort: $('remote-port'),
+  remoteCode: $('remote-code'),
+  remoteConnect: $('remote-connect'),
+  remoteStatus: $('remote-status'),
+  hostToggle: $('host-toggle'),
+  hostPanel: $('host-panel'),
+  hostAddrs: $('host-addrs'),
+  hostPort: $('host-port'),
+  hostCode: $('host-code'),
+  regenCodeBtn: $('regen-code-btn'),
 };
 
 const CAP = { shortcut: els.capShortcut };
@@ -50,6 +65,31 @@ function render() {
   els.delayVal.textContent = String(cfg.unmuteDelayMs);
   if (document.activeElement !== els.rpcId) els.rpcId.value = cfg.discordRpc.clientId || '';
   if (document.activeElement !== els.rpcSecret) els.rpcSecret.value = cfg.discordRpc.clientSecret || '';
+  renderRole();
+}
+
+// Reflect cfg.role / cfg.remote / cfg.hostListen into the "Où est Discord ?" card.
+// 'host' takes priority in the UI: it's an add-on on top of "this machine", mutually
+// exclusive with being a controller of a remote machine.
+function renderRole() {
+  const hosting = cfg.role === 'host';
+  const controllerSelected = cfg.role === 'controller';
+  for (const b of els.roleSeg.querySelectorAll('button')) {
+    b.classList.toggle('active', b.dataset.role === (controllerSelected ? 'controller' : 'local'));
+  }
+  els.controllerPanel.hidden = !controllerSelected;
+  els.hostToggle.checked = hosting;
+  els.hostPanel.hidden = !hosting;
+  if (document.activeElement !== els.remoteHost) els.remoteHost.value = cfg.remote.host || '';
+  if (document.activeElement !== els.remotePort) els.remotePort.value = String(cfg.remote.port || 8698);
+  if (document.activeElement !== els.remoteCode) els.remoteCode.value = cfg.remote.pairingCode || '';
+  if (document.activeElement !== els.hostPort) els.hostPort.value = String(cfg.hostListen.port || 8698);
+  els.hostCode.value = cfg.hostListen.pairingCode || '';
+}
+
+async function refreshHostAddrs() {
+  const info = await window.hush.lanInfo();
+  els.hostAddrs.textContent = info.addresses.length ? info.addresses.join(', ') : 'aucune IP LAN';
 }
 
 // Pull the RPC credentials out of whichever inputs are on screen into cfg.
@@ -95,6 +135,77 @@ els.modeSeg.addEventListener('click', (e) => {
 els.delay.addEventListener('input', () => {
   cfg.unmuteDelayMs = Number(els.delay.value);
   els.delayVal.textContent = els.delay.value;
+});
+
+// ---- Où est Discord ? (cross-machine role) ----
+els.roleSeg.addEventListener('click', (e) => {
+  const r = e.target.dataset.role;
+  if (!r) return;
+  if (els.hostToggle.checked) { els.hostToggle.checked = false; els.hostPanel.hidden = true; }
+  for (const b of els.roleSeg.querySelectorAll('button')) b.classList.toggle('active', b.dataset.role === r);
+  els.controllerPanel.hidden = r !== 'controller';
+  cfg.role = r;
+});
+
+els.hostToggle.addEventListener('change', async () => {
+  const checked = els.hostToggle.checked;
+  els.hostPanel.hidden = !checked;
+  if (!checked) {
+    // Fall back to whichever of local/controller the segment is showing.
+    const active = els.roleSeg.querySelector('button.active');
+    cfg.role = active?.dataset.role === 'controller' ? 'controller' : 'local';
+    await persist();
+    return;
+  }
+  // Hosting is exclusive with being a controller of a remote machine.
+  for (const b of els.roleSeg.querySelectorAll('button')) b.classList.toggle('active', b.dataset.role === 'local');
+  els.controllerPanel.hidden = true;
+  cfg.role = 'host';
+  await refreshHostAddrs();
+  if (!cfg.hostListen.pairingCode) cfg.hostListen.pairingCode = await window.hush.genCode();
+  els.hostCode.value = cfg.hostListen.pairingCode;
+  els.hostPort.value = String(cfg.hostListen.port || 8698);
+  await persist();
+});
+
+els.regenCodeBtn.addEventListener('click', async () => {
+  cfg.hostListen.pairingCode = await window.hush.genCode();
+  els.hostCode.value = cfg.hostListen.pairingCode;
+  await persist();
+});
+
+els.discoverBtn.addEventListener('click', async () => {
+  els.hostList.innerHTML = '<li>Recherche…</li>';
+  const hosts = await window.hush.discoverHosts();
+  els.hostList.innerHTML = '';
+  if (!hosts.length) {
+    els.hostList.innerHTML = "<li>Aucun hôte trouvé — saisis l'IP.</li>";
+    return;
+  }
+  for (const h of hosts) {
+    const li = document.createElement('li');
+    li.textContent = `${h.name} — ${h.host}:${h.port}`;
+    li.addEventListener('click', () => {
+      els.remoteHost.value = h.host;
+      els.remotePort.value = String(h.port);
+    });
+    els.hostList.appendChild(li);
+  }
+});
+
+els.remoteConnect.addEventListener('click', async () => {
+  cfg.role = 'controller';
+  cfg.remote = {
+    host: els.remoteHost.value.trim(),
+    port: Number(els.remotePort.value) || 8698,
+    pairingCode: els.remoteCode.value.trim(),
+  };
+  els.remoteStatus.textContent = 'Connexion…';
+  els.remoteStatus.className = 'pill pill-warn';
+  if (!(await persist())) {
+    els.remoteStatus.textContent = 'Non connecté';
+    els.remoteStatus.className = 'pill pill-off';
+  }
 });
 
 async function persist() {
@@ -160,6 +271,14 @@ function setStatus(s) {
     } else {
       els.rpcError.hidden = true;
     }
+  }
+  // Live remote-connection status (controller role) from the main process.
+  if (s.role === 'controller') {
+    const r = s.remote || {};
+    if (r.state === 'connected') { els.remoteStatus.textContent = 'Connecté ✓'; els.remoteStatus.className = 'pill pill-ok'; }
+    else if (r.state === 'connecting') { els.remoteStatus.textContent = 'Connexion…'; els.remoteStatus.className = 'pill pill-warn'; }
+    else if (r.error) { els.remoteStatus.textContent = `Échec : ${r.error}`; els.remoteStatus.className = 'pill pill-warn'; }
+    else { els.remoteStatus.textContent = 'Hôte injoignable'; els.remoteStatus.className = 'pill pill-off'; }
   }
 }
 
@@ -290,6 +409,7 @@ async function init() {
   document.title = brand.name;
   cfg = await window.hush.getConfig();
   render();
+  if (cfg.role === 'host') refreshHostAddrs();
   refreshPermissions();
   setInterval(refreshPermissions, 2000);
 

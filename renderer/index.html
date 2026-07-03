@@ -45,6 +45,66 @@
       <p class="err" id="rpc-error" hidden></p>
     </section>
 
+    <!-- Cross-machine role -->
+    <section class="card" id="role-card">
+      <h2>Où est Discord ?</h2>
+      <p class="muted">Discord tourne sur cette machine, ou sur une autre (setup double PC) — Hush le coupe dans les deux cas.</p>
+
+      <div class="binding">
+        <div class="binding-label"><strong>Emplacement de Discord</strong></div>
+        <div class="segment" id="role-seg">
+          <button type="button" data-role="local" class="active">Cette machine</button>
+          <button type="button" data-role="controller">Autre machine</button>
+        </div>
+      </div>
+
+      <div id="controller-panel" hidden>
+        <p class="hint">Choisis le PC qui fait tourner Discord, ou saisis son IP.</p>
+        <div class="row-actions">
+          <button class="ghost" id="discover-btn" type="button">Rechercher les hôtes…</button>
+        </div>
+        <ul id="host-list"></ul>
+        <div class="field">
+          <label for="remote-host">Adresse (IP)</label>
+          <input id="remote-host" type="text" spellcheck="false" autocomplete="off" placeholder="192.168.1.20" />
+        </div>
+        <div class="field">
+          <label for="remote-port">Port</label>
+          <input id="remote-port" type="number" value="8698" />
+        </div>
+        <div class="field">
+          <label for="remote-code">Code d'appairage</label>
+          <input id="remote-code" type="text" spellcheck="false" autocomplete="off" placeholder="ABC123" />
+        </div>
+        <div class="row-actions">
+          <button class="primary" id="remote-connect" type="button">Connecter</button>
+          <span id="remote-status" class="pill pill-off">Non connecté</span>
+        </div>
+      </div>
+
+      <hr />
+
+      <div class="perm-row">
+        <span><strong>Cette machine héberge Discord</strong> <span class="muted">— pour une autre machine</span></span>
+        <input type="checkbox" id="host-toggle" />
+      </div>
+      <div id="host-panel" hidden>
+        <p class="hint">Recopie ces infos sur l'autre machine (le contrôleur) :</p>
+        <p class="muted">Adresse(s) : <strong id="host-addrs">—</strong></p>
+        <div class="field">
+          <label for="host-port">Port</label>
+          <input id="host-port" type="number" value="8698" />
+        </div>
+        <div class="field">
+          <label for="host-code">Code d'appairage</label>
+          <input id="host-code" type="text" readonly />
+        </div>
+        <div class="row-actions">
+          <button class="ghost" id="regen-code-btn" type="button">Régénérer le code</button>
+        </div>
+      </div>
+    </section>
+
     <!-- Permissions -->
     <section class="card" id="perm-card">
       <h2>Permissions macOS</h2>

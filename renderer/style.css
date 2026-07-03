@@ -184,3 +184,11 @@ input[type=range]::-webkit-slider-thumb {
 .skip:hover { color: var(--text); }
 
 .hidden { display: none !important; }
+
+/* ---- Cross-machine role card ---- */
+#role-card hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+#role-card input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--primary); flex: none; }
+#controller-panel, #host-panel { padding-top: 4px; }
+#host-list { list-style: none; padding: 0; margin: 8px 0; }
+#host-list li { padding: 6px 8px; border-radius: var(--radius-sm); cursor: pointer; font-size: 12.5px; }
+#host-list li:hover { background: var(--surface2); }
