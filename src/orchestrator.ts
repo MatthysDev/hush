@@ -9,10 +9,6 @@ const realSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 // touches Wispr; it only drives the Discord RPC mute.
 export class Orchestrator {
   private active = false;
-  // Whether the user was already self-muted in Discord at the moment Hush
-  // muted. If so, releasing push-to-talk must leave them muted rather than
-  // unmuting them (they didn't ask to be unmuted).
-  private mutedBefore = false;
   // Presses/releases fire from the global hook as fire-and-forget callbacks, and
   // each mute/unmute is async (an RPC round-trip). Serialize them through this
   // tail so a release can't overtake the mute it's meant to undo.
@@ -84,10 +80,7 @@ export class Orchestrator {
 
   private async activate(): Promise<void> {
     if (this.active) return;
-    // Snapshot the pre-existing Discord mute so release can restore it. Unknown
-    // (null) → treat as not-muted, i.e. keep the old unmute-on-release behavior.
-    this.mutedBefore = (await this.discord.getMute?.()) === true;
-    dbg('orchestrator: activate (mute)', { mutedBefore: this.mutedBefore });
+    dbg('orchestrator: activate (mute)');
     this.setActive(true);
     await this.discord.setMute(true);
   }
@@ -95,11 +88,8 @@ export class Orchestrator {
   private async deactivate(): Promise<void> {
     if (!this.active) return;
     this.setActive(false);
-    if (this.mutedBefore) {
-      // They were already muted before Hush touched it — leave them muted.
-      dbg('orchestrator: deactivate (stay muted — was muted before)');
-      return;
-    }
+    // Restoring the user's prior voice state (incl. a pre-existing mute/deafen)
+    // now lives in the muter, so we always ask to unmute and let it decide.
     dbg('orchestrator: deactivate (unmute)');
     if (this.cfg.unmuteDelayMs > 0) await this.sleep(this.cfg.unmuteDelayMs);
     await this.discord.setMute(false);
