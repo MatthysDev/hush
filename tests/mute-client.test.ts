@@ -157,6 +157,18 @@ describe('RemoteDiscordMuter', () => {
     expect(sockets.length).toBe(2);                  // a fresh socket dialed out
   });
 
+  it('a stale scheduled reconnect does not orphan a freshly connected socket', () => {
+    const { muter, sockets, scheduled, ticks } = connected();
+    const tick = ticks[ticks.length - 1];
+    tick();                                   // ping, awaiting pong
+    tick();                                   // missed pong -> close -> reconnect scheduled
+    expect(scheduled.length).toBe(1);
+    muter.connect('192.168.1.20', 8698, 'ABC123');  // simulate resume: fresh dial
+    const afterFreshConnect = sockets.length;        // new socket created by connect()
+    scheduled[0]();                                   // stale scheduled reconnect fires
+    expect(sockets.length).toBe(afterFreshConnect);   // no extra (orphan) socket
+  });
+
   it('cancels the heartbeat on disconnect and ignores a stale tick', () => {
     const { muter, sockets, ticks, heartbeatCancels } = connected();
     muter.disconnect();

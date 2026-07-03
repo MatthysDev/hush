@@ -48,7 +48,11 @@ export class RemoteDiscordMuter implements DiscordMuter {
   }
 
   private open(): void {
-    if (!this.wanted) return;
+    // Bail if the user is gone, or a socket already exists: connect() and the
+    // onClose reconnect both null this.sock first, so a non-null sock here means
+    // a newer attempt already ran (e.g. a resume reconnect raced a scheduled one)
+    // — opening again would orphan the live socket.
+    if (!this.wanted || this.sock) return;
     this.state = 'connecting';
     this.lastError = null;
     const sock = this.factory(this.host, this.port);
