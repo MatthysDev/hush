@@ -165,6 +165,9 @@ input[type=range]::-webkit-slider-thumb {
 .modal .glyph { font-size: 30px; margin-bottom: 12px; display: block; }
 .modal h3 { font-size: 18px; font-weight: 680; letter-spacing: -0.2px; margin-bottom: 8px; }
 .modal p { color: var(--muted); font-size: 13px; line-height: 1.6; margin-bottom: 12px; }
+/* Keep the in-modal error slot in the alert colour — .modal p would otherwise
+   win on specificity and render it in muted grey like body text. */
+.modal p.err { color: var(--live); }
 .modal p strong, .modal li strong { color: var(--text); font-weight: 600; }
 .modal ol { margin: 0 0 14px; padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 1.7; }
 .modal ol li { margin-bottom: 4px; }
