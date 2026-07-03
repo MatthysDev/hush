@@ -14,6 +14,9 @@ export const DEFAULT_CONFIG: HushConfig = {
   role: 'local',
   remote: { host: '', port: DEFAULT_PORT, pairingCode: '' },
   hostListen: { port: DEFAULT_PORT, pairingCode: '' },
+  // Start with the machine by default — Hush is a set-and-forget menu-bar app,
+  // so relaunching it after every reboot is friction the user shouldn't need.
+  launchAtLogin: true,
 };
 
 export function validateConfig(cfg: HushConfig): void {

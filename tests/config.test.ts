@@ -85,3 +85,12 @@ describe('role config', () => {
     })).toThrow(/port/);
   });
 });
+
+describe('launch at login', () => {
+  it('defaults to launching Hush at login', () => {
+    expect(DEFAULT_CONFIG.launchAtLogin).toBe(true);
+  });
+  it('accepts launchAtLogin disabled', () => {
+    expect(() => validateConfig({ ...DEFAULT_CONFIG, launchAtLogin: false })).not.toThrow();
+  });
+});

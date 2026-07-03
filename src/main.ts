@@ -195,6 +195,15 @@ function refreshAppMenu(): void {
   );
 }
 
+// Reflect the launch-at-login preference into the OS login items. Idempotent —
+// safe to call on every launch and on every settings save. openAsHidden keeps
+// macOS from flashing a window for this menu-bar app; it's ignored on Windows.
+function applyLaunchAtLogin(next: HushConfig): void {
+  try {
+    app.setLoginItemSettings({ openAtLogin: next.launchAtLogin, openAsHidden: true });
+  } catch { /* noop — login-item control is best-effort */ }
+}
+
 function applyConfig(next: HushConfig) {
   // Tear down the previous engine without leaving Discord muted.
   void orchestrator?.forceRelease();
@@ -497,6 +506,7 @@ if (!app.requestSingleInstanceLock()) {
     tray.on('click', showWindow);
 
     applyConfig(cfg);
+    applyLaunchAtLogin(cfg); // honour the stored launch-at-login choice on boot
     // Auto-reconnect when the local Discord RPC drops (Discord quits/restarts).
     // Fires only on a real drop of a live session — never on an intentional
     // disconnect, and never in the controller role (where the local RPC is never
@@ -525,6 +535,7 @@ if (!app.requestSingleInstanceLock()) {
         const prev = cfg; // note: cfg is reassigned inside applyConfig(saved)
         const saved = saveConfig(next);
         applyRoleTransition(prev, saved);
+        applyLaunchAtLogin(saved); // apply a toggled launch-at-login immediately
         return { ok: true, config: saved };
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) };
