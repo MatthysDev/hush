@@ -12,6 +12,10 @@ const bridge = {
   quit: () => ipcRenderer.send('app:quit'),
   onStatus: (cb: (s: unknown) => void) => ipcRenderer.on('status', (_e, s) => cb(s)),
   reconnectRpc: () => ipcRenderer.invoke('rpc:reconnect'),
+  lanInfo: () => ipcRenderer.invoke('net:lan-info'),
+  genCode: () => ipcRenderer.invoke('net:gen-code'),
+  discoverHosts: () => ipcRenderer.invoke('net:discover'),
+  remoteStatus: () => ipcRenderer.invoke('net:remote-status'),
 };
 
 contextBridge.exposeInMainWorld('hush', bridge);
