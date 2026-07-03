@@ -526,4 +526,22 @@ describe('DiscordRpcMuter restores prior voice state (snapshot/restore)', () => 
     const lastSet = client!.calls.filter((c) => c.name === 'setVoiceSettings').map((c) => c.args[0]).pop();
     expect(lastSet).toEqual({ mute: true, deaf: true });
   });
+
+  it('does a plain unmute on release after a mid-hold drop cleared the hold (never stuck muted)', async () => {
+    let nextVoice: { mute?: boolean; deaf?: boolean } = { mute: false, deaf: false };
+    let client: FakeRpcClient | null = null;
+    const m = new DiscordRpcMuter({
+      createClient: () => { client = new FakeRpcClient(); client.voiceSettings = { ...nextVoice }; return client as any; },
+      oauth: makeFakeOauth({ isExpired: vi.fn(() => false) }) as any,
+      fetchImpl: (async () => { throw new Error('fetchImpl should not be called'); }) as any,
+      now: () => 1000,
+    });
+    await m.connect('cid', 'secret', { accessToken: 'tok', tokenExpiresAt: 999999 });
+    await m.setMute(true);                 // Hush mutes; heldByHush = true
+    client!.fireDisconnected();            // RPC drops mid-hold -> handleDrop clears heldByHush
+    await m.connect('cid', 'secret', { accessToken: 'tok', tokenExpiresAt: 999999 }); // reconnect (fresh client)
+    await m.setMute(false);                // release WITHOUT an intervening re-mute
+    const sets = client!.calls.filter((c) => c.name === 'setVoiceSettings').map((c) => c.args[0]);
+    expect(sets).toEqual([{ mute: false }]); // plain unmute, not a no-op / not stuck
+  });
 });

@@ -322,8 +322,12 @@ export class DiscordRpcMuter implements DiscordMuter {
           dbg('rpc: setMute', { on: false });
         }
       } else {
-        // Never held a Hush-mute → nothing of ours to undo; don't strip state.
-        dbg('rpc: setMute(false) ignored (not holding)');
+        // Not holding (e.g. the hold was lost to a mid-session RPC drop). Every
+        // caller only asks to unmute when it believes a mute is outstanding, so
+        // honor it and never leave Discord stuck muted. { mute: false } leaves
+        // deaf untouched — same best-effort path as a null snapshot above.
+        await this.client.setVoiceSettings({ mute: false });
+        dbg('rpc: setMute(false) plain unmute (not holding)');
       }
     } catch (err) {
       // A dropped socket (Discord quit mid-session) lands here — degrade to

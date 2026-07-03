@@ -69,7 +69,11 @@ snapshot taken when the hold began).
   Discord side effect — then clear `heldByHush = false`, `priorState = null`. If
   the snapshot had failed (`priorState` is null: not connected / query failed),
   fall back to the old best-effort behavior: `setVoiceSettings({ mute: false })`.
-  If `heldByHush` is false, it is a no-op (never strip a state Hush did not set).
+  If `heldByHush` is false (e.g. the hold was lost to a mid-session RPC drop that
+  cleared it), it ALSO does a plain `setVoiceSettings({ mute: false })`: every
+  caller only asks to unmute when it believes a mute is outstanding, so honoring
+  it is always safe and never leaves Discord stuck muted (the codebase's cardinal
+  rule) — the same best-effort path as a null snapshot.
 
 `getVoiceSettings()`/`setVoiceSettings({ mute?, deaf? })` already exist on the
 `RpcClient` interface (`discord-mute.ts:23-24`), so no client-contract change is
