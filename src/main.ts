@@ -22,6 +22,7 @@ import { MuteServer } from './mute-server';
 import { wsClientFactory, WsServerListener } from './mute-transport';
 import { lanAddresses, generatePairingCode } from './net';
 import { advertiseHost, browseHosts, DiscoveredHost } from './discovery';
+import { appBundlePath, canDragPermissions } from './mac-drag';
 
 interface MacPermissions {
   getAuthStatus(type: string): string;
@@ -49,6 +50,11 @@ export type CaptureResult =
   | { combo: null; reason: 'cancelled' | 'unsupported' | 'timeout' | 'busy' };
 
 const ASSETS = path.join(__dirname, '..', 'assets');
+
+// The installed Hush.app bundle (for the "drag me into the Privacy list" helper)
+// and whether that affordance applies here (macOS + packaged only).
+const APP_BUNDLE = appBundlePath(app.getPath('exe'));
+const CAN_DRAG_PERMS = canDragPermissions(process.platform, app.isPackaged, APP_BUNDLE);
 const RENDERER = path.join(__dirname, '..', 'renderer', 'index.html');
 
 let tray: Tray | null = null;
@@ -428,6 +434,20 @@ if (!app.requestSingleInstanceLock()) {
       void shell.openExternal(
         'x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent',
       );
+    });
+    // Whether the renderer should show the drag-into-Privacy-list affordance.
+    ipcMain.handle('perm:can-drag', () => CAN_DRAG_PERMS);
+    // Start a native drag of the Hush.app bundle so the user can drop it straight
+    // onto the macOS Accessibility / Input Monitoring list. startDrag requires a
+    // non-empty icon; reuse the app icon, scaled down for the drag image.
+    ipcMain.on('perm:startdrag', (e) => {
+      if (!CAN_DRAG_PERMS || !APP_BUNDLE) return;
+      try {
+        const icon = nativeImage
+          .createFromPath(path.join(ASSETS, 'generated', 'icon-256.png'))
+          .resize({ width: 64, height: 64 });
+        e.sender.startDrag({ file: APP_BUNDLE, icon });
+      } catch { /* noop — drag is best-effort, the Open buttons remain */ }
     });
     ipcMain.on('app:quit', () => app.quit());
     ipcMain.on('app:open-external', (_e, url: unknown) => {
