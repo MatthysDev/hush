@@ -153,10 +153,23 @@ async function connectDiscord(): Promise<void> {
     tokenExpiresAt: cfg.discordRpc.tokenExpiresAt,
   });
 
-  // Persist a freshly-obtained token so the next launch reconnects silently.
-  const tok = discord.getAccessToken();
-  if (ok && tok && tok !== cfg.discordRpc.accessToken) {
-    cfg = { ...cfg, discordRpc: { ...cfg.discordRpc, accessToken: tok } };
+  // Persist the full token set (access + rotated refresh + expiry) so the next
+  // launch — and every silent renewal — reconnects without a re-authorize popup.
+  // Do this even when `ok` is false: a refresh may have rotated (and invalidated)
+  // the old token before a later step failed, and dropping that rotated token would
+  // force a popup on the next attempt.
+  const t = discord.getTokens();
+  if (t && (
+    t.accessToken !== cfg.discordRpc.accessToken ||
+    t.refreshToken !== cfg.discordRpc.refreshToken ||
+    t.tokenExpiresAt !== cfg.discordRpc.tokenExpiresAt
+  )) {
+    cfg = { ...cfg, discordRpc: {
+      ...cfg.discordRpc,
+      accessToken: t.accessToken,
+      refreshToken: t.refreshToken,
+      tokenExpiresAt: t.tokenExpiresAt,
+    } };
     try { saveConfig(cfg); } catch { /* noop */ }
   }
 
@@ -292,6 +305,16 @@ if (!app.requestSingleInstanceLock()) {
     tray.on('click', showWindow);
 
     applyConfig(cfg);
+    // Auto-reconnect when Discord quits/restarts. The muter fires this ONLY on a
+    // real drop of a live session (never on our own intentional disconnect). If
+    // Discord is still restarting, the reconnect fails and the 15s retry loop takes
+    // over until it's back — so a Discord restart needs no manual reconnect.
+    discord.setOnDrop(() => {
+      dbg('rpc: dropped — scheduling reconnect');
+      if (rpcRetryTimer) { clearTimeout(rpcRetryTimer); rpcRetryTimer = null; }
+      rpcRetryTimer = setTimeout(() => { void connectDiscord(); }, 3000);
+    });
+
     void connectDiscord(); // best-effort auto-connect from stored credentials
 
     // First run: open the settings window so the user can set things up.
