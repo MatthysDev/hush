@@ -21,6 +21,7 @@ const els = {
   modeSeg: $('mode-seg'),
   delay: $('delay'),
   delayVal: $('delay-val'),
+  launchAtLogin: $('launch-at-login'),
   err: $('err'),
   save: $('save'),
   quit: $('quit'),
@@ -89,6 +90,7 @@ function render() {
   }
   els.delay.value = String(cfg.unmuteDelayMs);
   els.delayVal.textContent = String(cfg.unmuteDelayMs);
+  els.launchAtLogin.checked = cfg.launchAtLogin !== false;
   if (document.activeElement !== els.rpcId) els.rpcId.value = cfg.discordRpc.clientId || '';
   if (document.activeElement !== els.rpcSecret) els.rpcSecret.value = cfg.discordRpc.clientSecret || '';
   renderRole();
@@ -166,6 +168,13 @@ els.modeSeg.addEventListener('click', (e) => {
 els.delay.addEventListener('input', () => {
   cfg.unmuteDelayMs = Number(els.delay.value);
   els.delayVal.textContent = els.delay.value;
+});
+
+// Launch-at-login toggles the OS login item; persist immediately so it takes
+// effect without needing the Save button.
+els.launchAtLogin.addEventListener('change', async () => {
+  cfg.launchAtLogin = els.launchAtLogin.checked;
+  await persist();
 });
 
 // ---- Où est Discord ? (cross-machine role) ----

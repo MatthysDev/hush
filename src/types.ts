@@ -65,4 +65,7 @@ export interface HushConfig {
   role: Role;
   remote: RemoteConfig;
   hostListen: HostListenConfig;
+  // Launch Hush automatically when you log in to the machine. Applied via
+  // app.setLoginItemSettings; persisted so the choice survives restarts.
+  launchAtLogin: boolean;
 }

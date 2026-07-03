@@ -22,6 +22,9 @@ function migrate(raw: Record<string, unknown>): HushConfig {
     role: (raw.role as HushConfig['role']) ?? DEFAULT_CONFIG.role,
     remote: (raw.remote as HushConfig['remote']) ?? DEFAULT_CONFIG.remote,
     hostListen: (raw.hostListen as HushConfig['hostListen']) ?? DEFAULT_CONFIG.hostListen,
+    // New: launch-at-login. Old configs predate it → default to true (start
+    // with the machine), matching DEFAULT_CONFIG.
+    launchAtLogin: (raw.launchAtLogin as boolean) ?? DEFAULT_CONFIG.launchAtLogin,
   };
 }
 
