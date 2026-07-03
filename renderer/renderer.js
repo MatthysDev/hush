@@ -37,6 +37,21 @@ const els = {
   rpcReconnect: $('rpc-reconnect'),
   openTuto: $('open-tuto'),
   replayTuto: $('replay-tuto'),
+  roleSeg: $('role-seg'),
+  controllerPanel: $('controller-panel'),
+  discoverBtn: $('discover-btn'),
+  hostList: $('host-list'),
+  remoteHost: $('remote-host'),
+  remotePort: $('remote-port'),
+  remoteCode: $('remote-code'),
+  remoteConnect: $('remote-connect'),
+  remoteStatus: $('remote-status'),
+  hostToggle: $('host-toggle'),
+  hostPanel: $('host-panel'),
+  hostAddrs: $('host-addrs'),
+  hostPort: $('host-port'),
+  hostCode: $('host-code'),
+  regenCodeBtn: $('regen-code-btn'),
 };
 
 const CAP = { shortcut: els.capShortcut };
@@ -50,6 +65,31 @@ function render() {
   els.delayVal.textContent = String(cfg.unmuteDelayMs);
   if (document.activeElement !== els.rpcId) els.rpcId.value = cfg.discordRpc.clientId || '';
   if (document.activeElement !== els.rpcSecret) els.rpcSecret.value = cfg.discordRpc.clientSecret || '';
+  renderRole();
+}
+
+// Reflect cfg.role / cfg.remote / cfg.hostListen into the "Où est Discord ?" card.
+// 'host' takes priority in the UI: it's an add-on on top of "this machine", mutually
+// exclusive with being a controller of a remote machine.
+function renderRole() {
+  const hosting = cfg.role === 'host';
+  const controllerSelected = cfg.role === 'controller';
+  for (const b of els.roleSeg.querySelectorAll('button')) {
+    b.classList.toggle('active', b.dataset.role === (controllerSelected ? 'controller' : 'local'));
+  }
+  els.controllerPanel.hidden = !controllerSelected;
+  els.hostToggle.checked = hosting;
+  els.hostPanel.hidden = !hosting;
+  if (document.activeElement !== els.remoteHost) els.remoteHost.value = cfg.remote.host || '';
+  if (document.activeElement !== els.remotePort) els.remotePort.value = String(cfg.remote.port || 8698);
+  if (document.activeElement !== els.remoteCode) els.remoteCode.value = cfg.remote.pairingCode || '';
+  if (document.activeElement !== els.hostPort) els.hostPort.value = String(cfg.hostListen.port || 8698);
+  els.hostCode.value = cfg.hostListen.pairingCode || '';
+}
+
+async function refreshHostAddrs() {
+  const info = await window.hush.lanInfo();
+  els.hostAddrs.textContent = info.addresses.length ? info.addresses.join(', ') : 'aucune IP LAN';
 }
 
 // Pull the RPC credentials out of whichever inputs are on screen into cfg.
@@ -57,6 +97,21 @@ function syncRpcInputs() {
   cfg.discordRpc = {
     clientId: els.rpcId.value.trim(),
     clientSecret: els.rpcSecret.value.trim(),
+  };
+}
+
+// Pull the role-panel (controller/host) inputs out of whichever fields are on
+// screen into cfg. Does NOT touch cfg.role — the role-segment/host-toggle
+// handlers already keep that in sync on every interaction.
+function syncRoleInputs() {
+  cfg.remote = {
+    host: els.remoteHost.value.trim(),
+    port: Number(els.remotePort.value) || 8698,
+    pairingCode: els.remoteCode.value.trim(),
+  };
+  cfg.hostListen = {
+    port: Number(els.hostPort.value) || 8698,
+    pairingCode: els.hostCode.value.trim(),
   };
 }
 
@@ -97,18 +152,102 @@ els.delay.addEventListener('input', () => {
   els.delayVal.textContent = els.delay.value;
 });
 
+// ---- Où est Discord ? (cross-machine role) ----
+els.roleSeg.addEventListener('click', (e) => {
+  const r = e.target.dataset.role;
+  if (!r) return;
+  if (els.hostToggle.checked) { els.hostToggle.checked = false; els.hostPanel.hidden = true; }
+  for (const b of els.roleSeg.querySelectorAll('button')) b.classList.toggle('active', b.dataset.role === r);
+  els.controllerPanel.hidden = r !== 'controller';
+  cfg.role = r;
+});
+
+els.hostToggle.addEventListener('change', async () => {
+  const checked = els.hostToggle.checked;
+  els.hostPanel.hidden = !checked;
+  if (!checked) {
+    // Fall back to whichever of local/controller the segment is showing.
+    const active = els.roleSeg.querySelector('button.active');
+    cfg.role = active?.dataset.role === 'controller' ? 'controller' : 'local';
+    await persist();
+    return;
+  }
+  // Hosting is exclusive with being a controller of a remote machine.
+  for (const b of els.roleSeg.querySelectorAll('button')) b.classList.toggle('active', b.dataset.role === 'local');
+  els.controllerPanel.hidden = true;
+  cfg.role = 'host';
+  await refreshHostAddrs();
+  if (!cfg.hostListen.pairingCode) cfg.hostListen.pairingCode = await window.hush.genCode();
+  els.hostCode.value = cfg.hostListen.pairingCode;
+  els.hostPort.value = String(cfg.hostListen.port || 8698);
+  await persist();
+});
+
+els.regenCodeBtn.addEventListener('click', async () => {
+  cfg.hostListen.pairingCode = await window.hush.genCode();
+  els.hostCode.value = cfg.hostListen.pairingCode;
+  await persist();
+});
+
+els.discoverBtn.addEventListener('click', async () => {
+  els.hostList.innerHTML = '<li>Recherche…</li>';
+  const hosts = await window.hush.discoverHosts();
+  els.hostList.innerHTML = '';
+  if (!hosts.length) {
+    els.hostList.innerHTML = "<li>Aucun hôte trouvé — saisis l'IP.</li>";
+    return;
+  }
+  for (const h of hosts) {
+    const li = document.createElement('li');
+    li.textContent = `${h.name} — ${h.host}:${h.port}`;
+    li.addEventListener('click', () => {
+      els.remoteHost.value = h.host;
+      els.remotePort.value = String(h.port);
+    });
+    els.hostList.appendChild(li);
+  }
+});
+
+els.remoteConnect.addEventListener('click', async () => {
+  cfg.role = 'controller';
+  cfg.remote = {
+    host: els.remoteHost.value.trim(),
+    port: Number(els.remotePort.value) || 8698,
+    pairingCode: els.remoteCode.value.trim(),
+  };
+  els.remoteStatus.textContent = 'Connexion…';
+  els.remoteStatus.className = 'pill pill-warn';
+  if (!(await persist())) {
+    els.remoteStatus.textContent = 'Non connecté';
+    els.remoteStatus.className = 'pill pill-off';
+  }
+});
+
 async function persist() {
   syncRpcInputs();
+  syncRoleInputs();
   els.err.textContent = '';
   const res = await window.hush.saveConfig(cfg);
   if (!res.ok) {
-    els.err.textContent = res.error.includes('shortcut must have')
-      ? 'Choisis un vrai raccourci (au moins une touche ou un modificateur).'
-      : res.error;
+    els.err.textContent = translateConfigError(res.error);
     return false;
   }
   cfg = res.config;
   return true;
+}
+
+// Map validateConfig's (English) error strings to a French message for the UI.
+function translateConfigError(error) {
+  if (error.includes('shortcut must have')) {
+    return 'Choisis un vrai raccourci (au moins une touche ou un modificateur).';
+  } else if (error.includes('host address')) {
+    return "Renseigne l'adresse (IP) du PC qui héberge Discord.";
+  } else if (error.includes('pairing code')) {
+    return 'Renseigne un code d\'appairage.';
+  } else if (error.includes('port')) {
+    return 'Port invalide (doit être entre 1 et 65535).';
+  }
+  return error;
 }
 
 els.save.addEventListener('click', async () => {
@@ -159,6 +298,25 @@ function setStatus(s) {
       els.rpcError.hidden = false;
     } else {
       els.rpcError.hidden = true;
+    }
+  }
+  // Live remote-connection status (controller role) from the main process.
+  if (s.role === 'controller') {
+    const r = s.remote || {};
+    const help = $('remote-help');
+    if (r.state === 'connected') {
+      els.remoteStatus.textContent = 'Connecté ✓'; els.remoteStatus.className = 'pill pill-ok';
+      if (help) help.hidden = true;
+    } else if (r.state === 'connecting') {
+      els.remoteStatus.textContent = 'Connexion…'; els.remoteStatus.className = 'pill pill-warn';
+      if (help) help.hidden = true;
+    } else {
+      els.remoteStatus.textContent = r.error ? `Échec : ${r.error}` : 'Hôte injoignable';
+      els.remoteStatus.className = r.error ? 'pill pill-warn' : 'pill pill-off';
+      if (help) {
+        help.textContent = "Vérifie : Hush ouvert sur le PC hôte · les deux machines sur le même réseau · IP et code exacts · le pare-feu du PC autorise le port " + (cfg.remote?.port || 8698) + '.';
+        help.hidden = false;
+      }
     }
   }
 }
@@ -237,6 +395,16 @@ const STEPS = [
       <p>Tu le règles dans la fenêtre principale, juste derrière — clique sur le bouton de raccourci et presse ta touche.</p>`,
   },
   {
+    glyph: '🖥️',
+    title: 'Discord sur un autre PC ? (optionnel)',
+    body: `<p>Setup <strong>double PC</strong> — tu dictes ici mais Discord tourne sur une autre machine ? Hush sait couper ce Discord <strong>à distance</strong>, sur ton réseau local.</p>
+      <ol>
+        <li>Installe Hush aussi sur le PC qui a Discord, et coche <strong>« Cette machine héberge Discord »</strong> → il affiche une <strong>IP</strong> + un <strong>code d'appairage</strong>.</li>
+        <li>Ici, dans <strong>« Où est Discord ? »</strong> (fenêtre principale), choisis <strong>Autre machine</strong>, recopie l'IP et le code, puis <strong>Connecter</strong>.</li>
+      </ol>
+      <div class="callout">Les deux machines doivent être sur le <strong>même réseau</strong> (même Wi-Fi/box). En simple PC, ignore cette étape.</div>`,
+  },
+  {
     glyph: '✅',
     title: 'Tout est prêt',
     body: `<p>Hush vit dans la <strong>barre de menus</strong> (en haut à droite). Tiens ton raccourci : Discord se coupe et Wispr dicte. Relâche : ton micro revient.</p>
@@ -290,6 +458,7 @@ async function init() {
   document.title = brand.name;
   cfg = await window.hush.getConfig();
   render();
+  if (cfg.role === 'host') refreshHostAddrs();
   refreshPermissions();
   setInterval(refreshPermissions, 2000);
 

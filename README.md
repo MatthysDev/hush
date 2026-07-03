@@ -84,6 +84,34 @@ That's the whole trick: **detect the shortcut, mute Discord over RPC.** Because
 nothing is synthesized, there are no leaked modifiers, no self-observation loops,
 and no keystrokes for anything to ignore.
 
+## Dual-PC setup (Discord on another machine)
+
+Running a two-PC setup — dictating on one machine while Discord runs on another?
+Hush can mute the *remote* Discord over your LAN. Install Hush on **both** machines
+and give each a role:
+
+- **Host** — the machine that runs Discord. It connects to Discord's local RPC (as
+  usual) and listens on the LAN for mute commands. It has no shortcut of its own.
+- **Controller** — the machine where you dictate. It watches your shortcut and, when
+  you hold it, tells the host to mute — no local Discord needed there.
+
+Both must be on the **same local network** (same Wi-Fi / router).
+
+1. **On the host** (the PC with Discord) — open Hush, tick **"This machine hosts
+   Discord for another device"**, note the shown **LAN IP** + **pairing code**,
+   connect its Discord RPC as usual, and leave Hush running.
+2. **On the controller** (where you dictate) — **"Where is Discord?"** → **Another
+   machine** → pick the auto-discovered host (or type its IP), paste the **pairing
+   code**, and click **Connect**.
+3. Hold your shortcut as always — the *other* machine's Discord mutes while held and
+   unmutes on release.
+
+**Fail-safe:** if the link drops (controller sleeps, crashes, or leaves the network),
+the host auto-unmutes within a few seconds — you're never left stuck muted.
+
+The link is **LAN-only and gated by the pairing code** — no cloud, nothing exposed to
+the internet.
+
 ## Architecture
 
 ```
@@ -98,7 +126,13 @@ src/
 ├── brand.ts         # Name, taglines, color palette
 ├── debug.ts         # Opt-in debug logging
 ├── preload.ts       # contextBridge IPC surface for the settings window
-└── types.ts         # Shared types (Combo, Mode, HushConfig, DiscordMuter, …)
+├── types.ts         # Shared types (Combo, Mode, HushConfig, DiscordMuter, …)
+├── mute-protocol.ts # LAN wire protocol + transport seam (controller ↔ host)
+├── mute-client.ts   # RemoteDiscordMuter: controller-side muter over the LAN
+├── mute-server.ts   # MuteServer: host-side relay to local Discord (fail-safe)
+├── mute-transport.ts# Real WebSocket adapters (ws) for the seam
+├── discovery.ts     # Optional mDNS host advertise/browse (bonjour-service)
+└── net.ts           # LAN IPv4 list + pairing-code generator
 
 renderer/            # Settings window + onboarding tutorial (plain HTML/CSS/JS)
 tests/               # vitest unit tests (orchestrator, discord-mute, trigger-detector, config)
