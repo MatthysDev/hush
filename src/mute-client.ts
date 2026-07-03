@@ -32,6 +32,9 @@ export class RemoteDiscordMuter implements DiscordMuter {
   isConnected(): boolean { return this.state === 'connected'; }
 
   connect(host: string, port: number, code: string): void {
+    // Close any prior socket first so a direct re-connect can't orphan a live
+    // WebSocket (disconnect() clears `wanted`, which we re-set below).
+    if (this.sock) this.disconnect();
     this.host = host; this.port = port; this.code = code;
     this.wanted = true;
     this.open();
