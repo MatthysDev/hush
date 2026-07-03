@@ -148,6 +148,8 @@ export class DiscordRpcMuter implements DiscordMuter {
     if (this.closing) return;
     this.state = 'disconnected';
     this.client = null;
+    this.heldByHush = false;
+    this.priorState = null;
     dbg('rpc: disconnected (drop)');
     this.onDrop?.();
   }
@@ -339,5 +341,7 @@ export class DiscordRpcMuter implements DiscordMuter {
     }
     this.client = null;
     if (this.state === 'connected') this.state = 'disconnected';
+    this.heldByHush = false;
+    this.priorState = null;
   }
 }

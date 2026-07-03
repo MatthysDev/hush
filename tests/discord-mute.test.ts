@@ -506,4 +506,24 @@ describe('DiscordRpcMuter restores prior voice state (snapshot/restore)', () => 
     await m.setMute(false);
     expect(sets(client)).toEqual([{ mute: true }, { mute: false }]);
   });
+
+  it('re-snapshots after a mid-hold RPC drop instead of restoring stale state', async () => {
+    let nextVoice: { mute?: boolean; deaf?: boolean } = { mute: false, deaf: false };
+    let client: FakeRpcClient | null = null;
+    const m = new DiscordRpcMuter({
+      createClient: () => { client = new FakeRpcClient(); client.voiceSettings = { ...nextVoice }; return client as any; },
+      oauth: makeFakeOauth({ isExpired: vi.fn(() => false) }) as any,
+      fetchImpl: (async () => { throw new Error('fetchImpl should not be called'); }) as any,
+      now: () => 1000,
+    });
+    await m.connect('cid', 'secret', { accessToken: 'tok', tokenExpiresAt: 999999 });
+    await m.setMute(true);                 // snapshot { mute:false, deaf:false }
+    client!.fireDisconnected();            // RPC drops mid-hold
+    nextVoice = { mute: true, deaf: true }; // user self-deafens in Discord while Hush is down
+    await m.connect('cid', 'secret', { accessToken: 'tok', tokenExpiresAt: 999999 }); // reconnect (fresh client)
+    await m.setMute(true);                 // must RE-snapshot the current { mute:true, deaf:true }
+    await m.setMute(false);                // restore -> must be { mute:true, deaf:true }, not stale
+    const lastSet = client!.calls.filter((c) => c.name === 'setVoiceSettings').map((c) => c.args[0]).pop();
+    expect(lastSet).toEqual({ mute: true, deaf: true });
+  });
 });
