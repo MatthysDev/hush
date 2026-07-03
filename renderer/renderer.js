@@ -100,6 +100,21 @@ function syncRpcInputs() {
   };
 }
 
+// Pull the role-panel (controller/host) inputs out of whichever fields are on
+// screen into cfg. Does NOT touch cfg.role — the role-segment/host-toggle
+// handlers already keep that in sync on every interaction.
+function syncRoleInputs() {
+  cfg.remote = {
+    host: els.remoteHost.value.trim(),
+    port: Number(els.remotePort.value) || 8698,
+    pairingCode: els.remoteCode.value.trim(),
+  };
+  cfg.hostListen = {
+    port: Number(els.hostPort.value) || 8698,
+    pairingCode: els.hostCode.value.trim(),
+  };
+}
+
 async function startCapture(field) {
   if (armedField) return; // one at a time
   armedField = field;
@@ -210,16 +225,29 @@ els.remoteConnect.addEventListener('click', async () => {
 
 async function persist() {
   syncRpcInputs();
+  syncRoleInputs();
   els.err.textContent = '';
   const res = await window.hush.saveConfig(cfg);
   if (!res.ok) {
-    els.err.textContent = res.error.includes('shortcut must have')
-      ? 'Choisis un vrai raccourci (au moins une touche ou un modificateur).'
-      : res.error;
+    els.err.textContent = translateConfigError(res.error);
     return false;
   }
   cfg = res.config;
   return true;
+}
+
+// Map validateConfig's (English) error strings to a French message for the UI.
+function translateConfigError(error) {
+  if (error.includes('shortcut must have')) {
+    return 'Choisis un vrai raccourci (au moins une touche ou un modificateur).';
+  } else if (error.includes('host address')) {
+    return "Renseigne l'adresse (IP) du PC qui héberge Discord.";
+  } else if (error.includes('pairing code')) {
+    return 'Renseigne un code d\'appairage.';
+  } else if (error.includes('port')) {
+    return 'Port invalide (doit être entre 1 et 65535).';
+  }
+  return error;
 }
 
 els.save.addEventListener('click', async () => {
