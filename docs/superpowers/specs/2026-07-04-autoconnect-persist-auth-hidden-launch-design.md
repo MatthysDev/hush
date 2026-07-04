@@ -52,6 +52,11 @@ jamais pouvoir les effacer. Dans le chemin de sauvegarde côté `main` :
 - Lorsqu'un `config:set` (ou `saveConfig`) arrive, **fusionner** les tokens
   déjà connus (`accessToken`/`refreshToken`/`tokenExpiresAt`) dans le
   `discordRpc` entrant **tant que `clientId` et `clientSecret` sont inchangés**.
+- À `clientId`/`clientSecret` inchangés, on garde **toujours** les tokens de
+  `main` (jamais l'écho du renderer) : `main` est l'unique source de vérité et
+  fait tourner le refresh token silencieusement en tâche de fond, donc la copie
+  détenue par le renderer peut être périmée (rotation déjà effectuée entre le
+  `config:get` initial et ce `config:set`).
 - Si `clientId` ou `clientSecret` changent (nouvelle app Discord), on **remet à
   zéro** les tokens (ils ne valent plus rien).
 

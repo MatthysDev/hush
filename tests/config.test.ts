@@ -125,11 +125,14 @@ describe('preserveDiscordTokens', () => {
     });
   });
 
-  it('prefers tokens the renderer did carry over the previous ones', () => {
+  it("keeps main's tokens even when the renderer echoes different ones (creds unchanged)", () => {
     const next = {
       clientId: 'id', clientSecret: 'secret',
       accessToken: 'A2', refreshToken: 'R2', tokenExpiresAt: 999,
     };
-    expect(preserveDiscordTokens(withTokens, next)).toEqual(next);
+    expect(preserveDiscordTokens(withTokens, next)).toEqual({
+      clientId: 'id', clientSecret: 'secret',
+      accessToken: 'A', refreshToken: 'R', tokenExpiresAt: 123,
+    });
   });
 });

@@ -53,14 +53,18 @@ export function getConfig(): HushConfig {
 // the OAuth tokens Hush obtained at runtime. Saving its config verbatim would
 // wipe those tokens and force a re-authorize popup on the next launch. Carry the
 // existing tokens forward UNLESS the credentials changed (a new Discord app
-// invalidates them). If `next` already carries tokens, they win.
+// invalidates them).
 export function preserveDiscordTokens(prev: DiscordRpc, next: DiscordRpc): DiscordRpc {
   const sameCreds = prev.clientId === next.clientId && prev.clientSecret === next.clientSecret;
   if (!sameCreds) return { clientId: next.clientId, clientSecret: next.clientSecret };
+  // Credentials unchanged: main is the sole source of truth for the tokens and
+  // silently rotates the refresh token in the background, so the renderer's
+  // echoed copy may be stale. Always keep main's (prev's) tokens — never the
+  // renderer's — to avoid persisting a rotated-out token and forcing a popup.
   return {
     ...next,
-    accessToken: next.accessToken ?? prev.accessToken,
-    refreshToken: next.refreshToken ?? prev.refreshToken,
-    tokenExpiresAt: next.tokenExpiresAt ?? prev.tokenExpiresAt,
+    accessToken: prev.accessToken,
+    refreshToken: prev.refreshToken,
+    tokenExpiresAt: prev.tokenExpiresAt,
   };
 }
