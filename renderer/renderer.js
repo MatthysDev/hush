@@ -53,6 +53,10 @@ const els = {
   hostPort: $('host-port'),
   hostCode: $('host-code'),
   regenCodeBtn: $('regen-code-btn'),
+  updateBanner: $('update-banner'),
+  updateText: $('update-text'),
+  updateDownload: $('update-download'),
+  appVersion: $('app-version'),
 };
 
 // Show a user-facing error. When the onboarding modal is open its own #ob-err
@@ -361,6 +365,14 @@ function setStatus(s) {
       }
     }
   }
+  // Update-available banner (from the main-process release check).
+  if (s.update && s.update.version && s.update.url) {
+    els.updateText.textContent = `Nouvelle version ${s.update.version} disponible`;
+    els.updateDownload.onclick = () => window.hush.openExternal(s.update.url);
+    els.updateBanner.hidden = false;
+  } else {
+    els.updateBanner.hidden = true;
+  }
 }
 
 function setRpcPill(el, state) {
@@ -607,6 +619,7 @@ async function init() {
   els.name.textContent = brand.name;
   els.tagline.textContent = brand.tagline;
   document.title = brand.name;
+  try { els.appVersion.textContent = `Hush ${await window.hush.getVersion()}`; } catch { /* noop */ }
   cfg = await window.hush.getConfig();
   render();
   wireRoleControls(els);
