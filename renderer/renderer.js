@@ -376,6 +376,7 @@ function setPill(el, ok, label) {
 }
 
 async function refreshPermissions() {
+  if (!IS_MAC) return; // macOS-only TCC permissions; nothing to show elsewhere
   const p = await window.hush.getPermissions();
   setPill(els.accState, p.accessibility, 'Accessibilité');
   setPill(els.inputState, p.inputMonitoring, 'Surveillance de la saisie');
@@ -400,14 +401,17 @@ async function initPermDrag() {
 }
 
 // ---- Onboarding tutorial ----
+// macOS-only UI (TCC permissions) is meaningless on Windows/Linux — gate it.
+const IS_MAC = !!(window.hush && window.hush.isMac);
 const STEPS = [
   {
     glyph: '🤫',
     title: 'Bienvenue dans Hush',
     body: `<p>Tu dictes déjà avec Wispr Flow en tenant un raccourci. Hush <strong>coupe ton micro Discord</strong> pendant que tu le tiens — tu relâches, ton micro revient. Personne ne t'entend dicter.</p>
-      <p>3 minutes de réglage : les permissions macOS, la connexion à Discord, et ton raccourci. C'est parti.</p>`,
+      <p>Quelques minutes de réglage : ${IS_MAC ? 'les permissions macOS, ' : ''}la connexion à Discord et ton raccourci. C'est parti.</p>`,
   },
   {
+    macOnly: true,
     glyph: '🔐',
     title: 'Permissions macOS',
     body: `<p>Hush a besoin de deux autorisations pour repérer quand tu tiens ton raccourci.</p>
@@ -427,6 +431,7 @@ const STEPS = [
     },
   },
   {
+    key: 'discord',
     glyph: '🎙️',
     title: 'Connecter Discord',
     body: `<p>Hush coupe Discord via son socket local — il te faut une petite app Discord (gratuit, 2 min) :</p>
@@ -558,13 +563,17 @@ const ob = {
   skip: $('ob-skip'),
 };
 
+// The onboarding steps that apply to this platform (drops macOS-only steps
+// elsewhere, so indices below are platform-relative — target steps by key).
+const steps = STEPS.filter((s) => !s.macOnly || IS_MAC);
+
 function renderStep() {
-  const s = STEPS[obIndex];
-  ob.steps.innerHTML = STEPS.map((_, i) => `<i class="${i <= obIndex ? 'done' : ''}"></i>`).join('');
+  const s = steps[obIndex];
+  ob.steps.innerHTML = steps.map((_, i) => `<i class="${i <= obIndex ? 'done' : ''}"></i>`).join('');
   ob.body.innerHTML = `<span class="glyph">${s.glyph}</span><h3>${s.title}</h3>${s.body}`;
   if (typeof s.wire === 'function') s.wire(ob.body);
   ob.back.classList.toggle('hidden', obIndex === 0);
-  ob.next.textContent = obIndex === STEPS.length - 1 ? 'Terminer' : 'Suivant';
+  ob.next.textContent = obIndex === steps.length - 1 ? 'Terminer' : 'Suivant';
 }
 
 function openOnboarding(index = 0) {
@@ -578,12 +587,16 @@ function closeOnboarding() {
 }
 
 ob.next.addEventListener('click', () => {
-  if (obIndex >= STEPS.length - 1) return closeOnboarding();
+  if (obIndex >= steps.length - 1) return closeOnboarding();
   obIndex++; renderStep();
 });
 ob.back.addEventListener('click', () => { if (obIndex > 0) { obIndex--; renderStep(); } });
 ob.skip.addEventListener('click', closeOnboarding);
-els.openTuto.addEventListener('click', (e) => { e.preventDefault(); openOnboarding(2); });
+els.openTuto.addEventListener('click', (e) => {
+  e.preventDefault();
+  // Jump to the "Connect Discord" step by key — its index shifts by platform.
+  openOnboarding(Math.max(0, steps.findIndex((s) => s.key === 'discord')));
+});
 els.replayTuto.addEventListener('click', (e) => { e.preventDefault(); openOnboarding(0); });
 
 // ---- Init ----
@@ -596,8 +609,14 @@ async function init() {
   render();
   wireRoleControls(els);
   if (cfg.role === 'host') refreshHostAddrs(els);
-  refreshPermissions();
-  setInterval(refreshPermissions, 2000);
+  // macOS-only permission panel: poll it live on Mac; hide it entirely elsewhere.
+  const permCard = document.getElementById('perm-card');
+  if (IS_MAC) {
+    refreshPermissions();
+    setInterval(refreshPermissions, 2000);
+  } else if (permCard) {
+    permCard.hidden = true;
+  }
   await initPermDrag(); // resolve drag availability before onboarding may render step 2
 
   window.hush.onConfigUpdated((next) => {
