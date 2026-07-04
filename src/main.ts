@@ -27,6 +27,7 @@ import { hostAddr, shouldRetarget } from './host-discovery';
 import { appBundlePath, canDragPermissions } from './mac-drag';
 import { resolveLocationSwitch } from './location-switch';
 import { shouldShowWindowOnLaunch } from './launch';
+import { checkForUpdate, UpdateInfo, FetchLike } from './update-check';
 
 interface MacPermissions {
   getAuthStatus(type: string): string;
@@ -82,11 +83,26 @@ let capturing = false;
 // Signature (role|remote-host) refreshAppMenu() last rebuilt for — lets it skip
 // rebuilding the macOS app menu on pushStatus() calls where neither changed.
 let lastAppMenuSig: string | null = null;
+let latestUpdate: UpdateInfo | null = null;
+let updateTimer: ReturnType<typeof setInterval> | null = null;
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 function trayImage(name: 'trayIdleTemplate' | 'trayActiveTemplate') {
   const img = nativeImage.createFromPath(path.join(ASSETS, `${name}.png`));
   img.setTemplateImage(true);
   return img;
+}
+
+// Best-effort check for a newer upstream release. Updates latestUpdate and, when
+// it changes, re-pushes status so the window banner and tray item refresh.
+async function runUpdateCheck(): Promise<void> {
+  const found = await checkForUpdate((globalThis.fetch as unknown) as FetchLike, app.getVersion());
+  const changed = (found?.version ?? null) !== (latestUpdate?.version ?? null);
+  latestUpdate = found;
+  if (changed) {
+    dbg('update: check', found ? `newer ${found.version}` : 'up to date');
+    pushStatus();
+  }
 }
 
 function pushStatus() {
@@ -97,6 +113,7 @@ function pushStatus() {
     rpc: discord.getState(),
     rpcError: discord.getError(),
     remote: { state: remote.getState(), error: remote.getError() },
+    update: latestUpdate,
   });
   if (tray) tray.setImage(trayImage(active ? 'trayActiveTemplate' : 'trayIdleTemplate'));
   refreshTrayMenu();
@@ -148,6 +165,15 @@ function refreshTrayMenu() {
       { type: 'separator' },
       { label: 'Emplacement de Discord', enabled: false },
       ...discordLocationMenuItems(),
+      ...(latestUpdate
+        ? [
+            { type: 'separator' as const },
+            {
+              label: `⬆︎ Nouvelle version ${latestUpdate.version} — Télécharger`,
+              click: () => { const u = latestUpdate; if (u) void shell.openExternal(u.url); },
+            },
+          ]
+        : []),
       { type: 'separator' },
       { label: 'Réglages…', click: showWindow },
       { label: 'Quitter Hush', click: () => app.quit() },
@@ -475,6 +501,7 @@ function cleanup() {
   remote.disconnect();
   stopDiscovery();
   stopHost();
+  if (updateTimer) { clearInterval(updateTimer); updateTimer = null; }
 }
 
 // Bring the app in line with a config that has ALREADY been saved: re-arm the
@@ -587,8 +614,13 @@ if (!app.requestSingleInstanceLock()) {
     // and setup is already done, in which case stay quietly in the tray.
     if (shouldShowWindowOnLaunch(wasAutoLaunched(), cfg)) showWindow();
 
+    // Update check: once at boot, then daily while the app stays resident.
+    void runUpdateCheck();
+    updateTimer = setInterval(() => void runUpdateCheck(), UPDATE_CHECK_INTERVAL_MS);
+
     // ---- IPC ----
     ipcMain.handle('config:get', () => cfg);
+    ipcMain.handle('app:version', () => app.getVersion());
     ipcMain.handle('brand:get', () => ({ name: BRAND.name, tagline: BRAND.taglineFr }));
     ipcMain.handle('config:set', (_e, next: HushConfig) => {
       try {

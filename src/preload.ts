@@ -15,6 +15,7 @@ const bridge = {
   startPermDrag: () => ipcRenderer.send('perm:startdrag'),
   openExternal: (url: string) => ipcRenderer.send('app:open-external', url),
   quit: () => ipcRenderer.send('app:quit'),
+  getVersion: () => ipcRenderer.invoke('app:version'),
   onStatus: (cb: (s: unknown) => void) => ipcRenderer.on('status', (_e, s) => cb(s)),
   onConfigUpdated: (cb: (cfg: unknown) => void) =>
     ipcRenderer.on('config-updated', (_e, cfg) => cb(cfg)),
