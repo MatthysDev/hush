@@ -23,6 +23,7 @@ import { MuteServer } from './mute-server';
 import { wsClientFactory, WsServerListener } from './mute-transport';
 import { lanAddresses, generatePairingCode } from './net';
 import { advertiseHost, browseHosts, DiscoveredHost } from './discovery';
+import { hostAddr, shouldRetarget } from './host-discovery';
 import { appBundlePath, canDragPermissions } from './mac-drag';
 import { resolveLocationSwitch } from './location-switch';
 import { shouldShowWindowOnLaunch } from './launch';
@@ -71,6 +72,7 @@ const remote = new RemoteDiscordMuter(wsClientFactory);
 // Host-side relay (role === 'host'). Lazily created in startHost().
 let muteServer: MuteServer | null = null;
 let stopAdvertise: (() => void) | null = null;
+let stopHostDiscovery: (() => void) | null = null;
 let orchestrator: Orchestrator | null = null;
 let input: InputEngine | null = null;
 let cfg: HushConfig = loadConfig();
@@ -322,11 +324,42 @@ function stopHost(): void {
   if (stopAdvertise) { stopAdvertise(); stopAdvertise = null; }
 }
 
-// Controller role: (re)connect the remote muter from config.
+// Controller-side continuous mDNS discovery: browse for a Hush host and dial its
+// CURRENT address whenever it changes (DHCP move, host restart). There is only
+// ever one host on the LAN, so we connect to whichever we find. The pairing code
+// stays a one-time entry; the address is no longer something the user maintains.
+function startHostDiscovery(): void {
+  stopDiscovery();
+  if (cfg.role !== 'controller') return;
+  let currentTarget = cfg.remote.host ? hostAddr(cfg.remote) : '';
+  stopHostDiscovery = browseHosts((h) => {
+    const addr = hostAddr(h);
+    if (!shouldRetarget(currentTarget, addr)) return;
+    currentTarget = addr;
+    dbg('discovery: host found — connecting', addr);
+    cfg = { ...cfg, remote: { ...cfg.remote, host: h.host, port: h.port } };
+    try { saveConfig(cfg); } catch { /* noop — remember the address best-effort */ }
+    remote.connect(h.host, h.port, cfg.remote.pairingCode);
+    win?.webContents.send('config-updated', cfg); // reflect the discovered IP in an open window
+    pushStatus();
+  });
+}
+
+function stopDiscovery(): void {
+  if (stopHostDiscovery) { stopHostDiscovery(); stopHostDiscovery = null; }
+}
+
+// Controller role: dial the last-known host immediately (fast path), then keep
+// an mDNS browse running so we switch to the host's live address when it appears
+// or moves. Idempotent — safe to call on resume and on every role transition.
 function connectRemote(): void {
   remote.disconnect();
-  if (cfg.role !== 'controller' || !cfg.remote.host) return;
-  remote.connect(cfg.remote.host, cfg.remote.port, cfg.remote.pairingCode);
+  stopDiscovery();
+  if (cfg.role !== 'controller') return;
+  // Fast path: try the last-known address right away so a reconnect after wake
+  // doesn't wait a full mDNS round.
+  if (cfg.remote.host) remote.connect(cfg.remote.host, cfg.remote.port, cfg.remote.pairingCode);
+  startHostDiscovery(); // keep looking; retarget to the live address when found
   pushStatus();
 }
 
@@ -440,6 +473,7 @@ function cleanup() {
   void orchestrator?.forceRelease();
   input?.stop();
   remote.disconnect();
+  stopDiscovery();
   stopHost();
 }
 
@@ -454,6 +488,7 @@ function applyRoleTransition(prev: HushConfig, saved: HushConfig): void {
   // new role — mirrors how applyConfig() already released the input/orchestrator.
   stopHost();
   remote.disconnect();
+  stopDiscovery();
 
   const credsChanged =
     saved.discordRpc.clientId !== prev.discordRpc.clientId ||

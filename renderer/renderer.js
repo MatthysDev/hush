@@ -354,7 +354,7 @@ function setStatus(s) {
       setRemote('Connexion…', 'pill pill-warn');
       if (help) help.hidden = true;
     } else {
-      setRemote(r.error ? `Échec : ${r.error}` : 'Hôte injoignable', r.error ? 'pill pill-warn' : 'pill pill-off');
+      setRemote(r.error ? `Échec : ${r.error}` : 'Recherche de l’hôte…', 'pill pill-warn');
       if (help) {
         help.textContent = "Vérifie : Hush ouvert sur le PC hôte · les deux machines sur le même réseau · IP et code exacts · le pare-feu du PC autorise le port " + (cfg.remote?.port || 8698) + '.';
         help.hidden = false;
