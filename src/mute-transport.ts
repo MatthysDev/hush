@@ -8,6 +8,9 @@ export const wsClientFactory: ClientSocketFactory = (host, port): ClientSocket =
   return {
     send: (data) => { if (ws.readyState === WebSocket.OPEN) ws.send(data); },
     close: () => { try { ws.close(); } catch { /* noop */ } },
+    // Immediate teardown for a presumed-dead link — ws.close() would hang on the
+    // 30s close-handshake timeout when the peer is unreachable, stalling reconnect.
+    terminate: () => { try { ws.terminate(); } catch { /* noop */ } },
     onOpen: (cb) => ws.on('open', cb),
     onMessage: (cb) => ws.on('message', (d) => cb(d.toString())),
     onClose: (cb) => { ws.on('close', cb); ws.on('error', () => { /* close follows */ }); },

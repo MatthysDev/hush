@@ -101,7 +101,11 @@ export class RemoteDiscordMuter implements DiscordMuter {
     this.clearHeartbeat();   // also resets awaitingPong
     this.stopHeartbeat = this.heartbeat(() => {
       if (this.sock !== sock) return;            // stale timer from an old socket
-      if (this.awaitingPong) { sock.close(); return; } // missed a pong → dead link
+      // Missed a pong → the link is dead. Terminate (immediate RST) rather than
+      // close(): a graceful close on an unreachable peer blocks ~30s on the ws
+      // close-handshake timeout before onClose fires, which delayed reconnection
+      // to over a minute.
+      if (this.awaitingPong) { sock.terminate(); return; }
       this.awaitingPong = true;
       sock.send(encode({ t: 'ping' }));
     });

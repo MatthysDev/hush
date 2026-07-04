@@ -57,6 +57,10 @@ export interface DuplexSocket {
 // A controller dials out and learns when the connection opens.
 export interface ClientSocket extends DuplexSocket {
   onOpen(cb: () => void): void;
+  // Destroy the connection immediately (RST), firing onClose at once. Used when
+  // the link is presumed dead — a graceful close() would otherwise block on the
+  // ws close-handshake timeout (~30s) waiting for an ack the dead peer never sends.
+  terminate(): void;
 }
 export type ClientSocketFactory = (host: string, port: number) => ClientSocket;
 

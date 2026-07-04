@@ -6,11 +6,16 @@ import { ClientSocket, encode, decode, PROTOCOL_VERSION } from '../src/mute-prot
 class FakeClientSocket implements ClientSocket {
   sent: string[] = [];
   closed = false;
+  terminated = false;
   private msgCb: (d: string) => void = () => {};
   private openCb: () => void = () => {};
   private closeCb: () => void = () => {};
   send(d: string) { this.sent.push(d); }
   close() { this.closed = true; this.closeCb(); }
+  // Real ws.terminate() destroys the socket immediately and fires 'close' at
+  // once — unlike close(), which waits on the 30s close-handshake timeout when
+  // the peer is unreachable.
+  terminate() { this.terminated = true; this.closeCb(); }
   onMessage(cb: (d: string) => void) { this.msgCb = cb; }
   onOpen(cb: () => void) { this.openCb = cb; }
   onClose(cb: () => void) { this.closeCb = cb; }
@@ -146,12 +151,16 @@ describe('RemoteDiscordMuter', () => {
     expect(pings.length).toBe(2);
   });
 
-  it('closes the socket and reconnects when a pong is missed', () => {
+  it('terminates (not graceful-closes) the socket and reconnects when a pong is missed', () => {
     const { sockets, scheduled, ticks } = connected();
     const tick = ticks[ticks.length - 1];
     tick();                                          // ping, now awaiting pong
     tick();                                          // no pong arrived -> dead link
-    expect(sockets[0].closed).toBe(true);
+    // Must terminate() immediately, not close(): a graceful ws.close() on an
+    // unreachable peer blocks ~30s on the close-handshake timeout before onClose
+    // fires, which is what made reconnection take >1 minute.
+    expect(sockets[0].terminated).toBe(true);
+    expect(sockets[0].closed).toBe(false);
     expect(scheduled.length).toBe(1);                // onClose scheduled a reconnect
     scheduled[0]();                                  // run it
     expect(sockets.length).toBe(2);                  // a fresh socket dialed out
