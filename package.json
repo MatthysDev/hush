@@ -61,7 +61,11 @@
       "icon": "assets/icon.icns",
       "identity": null,
       "extendInfo": {
-        "LSUIElement": true
+        "LSUIElement": true,
+        "NSLocalNetworkUsageDescription": "Hush connects to Discord on another machine over your local network to mute it while you dictate.",
+        "NSBonjourServices": [
+          "_hush._tcp"
+        ]
       }
     },
     "dmg": {
