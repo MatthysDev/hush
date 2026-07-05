@@ -38,6 +38,7 @@
   "build": {
     "appId": "com.hush.app",
     "productName": "Hush",
+    "afterPack": "scripts/after-pack.js",
     "directories": {
       "buildResources": "build",
       "output": "release"
