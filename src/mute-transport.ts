@@ -13,7 +13,12 @@ export const wsClientFactory: ClientSocketFactory = (host, port): ClientSocket =
     terminate: () => { try { ws.terminate(); } catch { /* noop */ } },
     onOpen: (cb) => ws.on('open', cb),
     onMessage: (cb) => ws.on('message', (d) => cb(d.toString())),
-    onClose: (cb) => { ws.on('close', cb); ws.on('error', () => { /* close follows */ }); },
+    onClose: (cb) => {
+      ws.on('close', (code, reason) => { dbg('remote-ws: close', { code, reason: reason?.toString() }); cb(); });
+      // Surface the failure reason (ECONNREFUSED / ETIMEDOUT / EHOSTUNREACH / …)
+      // instead of swallowing it — a close event follows and drives reconnect.
+      ws.on('error', (e: NodeJS.ErrnoException) => dbg('remote-ws: error', e?.code || e?.message));
+    },
   };
 };
 

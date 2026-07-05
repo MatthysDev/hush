@@ -358,8 +358,10 @@ function startHostDiscovery(): void {
   stopDiscovery();
   if (cfg.role !== 'controller') return;
   let currentTarget = cfg.remote.host ? hostAddr(cfg.remote) : '';
+  dbg('discovery: browsing start', { seed: currentTarget });
   stopHostDiscovery = browseHosts((h) => {
     const addr = hostAddr(h);
+    dbg('discovery: found', { addr, retarget: shouldRetarget(currentTarget, addr) });
     if (!shouldRetarget(currentTarget, addr)) return;
     currentTarget = addr;
     dbg('discovery: host found — connecting', addr);
@@ -381,6 +383,7 @@ function stopDiscovery(): void {
 function connectRemote(): void {
   remote.disconnect();
   stopDiscovery();
+  dbg('connectRemote', { role: cfg.role, host: cfg.remote.host, port: cfg.remote.port, codeSet: !!cfg.remote.pairingCode });
   if (cfg.role !== 'controller') return;
   // Fast path: try the last-known address right away so a reconnect after wake
   // doesn't wait a full mDNS round.

@@ -55,11 +55,13 @@ export class RemoteDiscordMuter implements DiscordMuter {
     if (!this.wanted || this.sock) return;
     this.state = 'connecting';
     this.lastError = null;
+    dbg('remote: dialing', `${this.host}:${this.port}`, { codeLen: this.code.length });
     const sock = this.factory(this.host, this.port);
     this.sock = sock;
 
     sock.onOpen(() => {
       if (this.sock !== sock) return;
+      dbg('remote: socket open — sending hello', { v: PROTOCOL_VERSION, codeLen: this.code.length });
       sock.send(encode({ t: 'hello', v: PROTOCOL_VERSION, code: this.code }));
     });
     sock.onMessage((raw) => {
@@ -88,6 +90,7 @@ export class RemoteDiscordMuter implements DiscordMuter {
       if (this.sock !== sock) return;
       this.clearHeartbeat();
       this.sock = null;
+      dbg('remote: onClose', { stateWas: this.state, wanted: this.wanted });
       if (this.state === 'connected') dbg('remote: link dropped');
       this.state = 'disconnected';
       if (this.wanted) this.schedule(() => this.open());
