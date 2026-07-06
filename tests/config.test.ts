@@ -32,4 +32,107 @@ describe('validateConfig', () => {
       shortcut: { mods: [], key: '' },
     })).toThrow(/shortcut must have/);
   });
+  it('accepts a discordRpc with refreshToken + tokenExpiresAt', () => {
+    expect(() => validateConfig({
+      ...DEFAULT_CONFIG,
+      discordRpc: {
+        clientId: 'cid',
+        clientSecret: 'sec',
+        refreshToken: 'refresh-abc',
+        tokenExpiresAt: 1234567890,
+      },
+    })).not.toThrow();
+  });
+  it('leaves discordRpc defaults unchanged (no refresh-token fields by default)', () => {
+    expect(DEFAULT_CONFIG.discordRpc).toEqual({ clientId: '', clientSecret: '' });
+  });
+});
+
+describe('role config', () => {
+  it('defaults to the local role (no regression for existing users)', () => {
+    expect(DEFAULT_CONFIG.role).toBe('local');
+  });
+  it('defaults remote/host to port 8698 with empty pairing codes', () => {
+    expect(DEFAULT_CONFIG.remote).toEqual({ host: '', port: 8698, pairingCode: '' });
+    expect(DEFAULT_CONFIG.hostListen).toEqual({ port: 8698, pairingCode: '' });
+  });
+  it('accepts a controller config with a host address and code', () => {
+    expect(() => validateConfig({
+      ...DEFAULT_CONFIG,
+      role: 'controller',
+      remote: { host: '192.168.1.20', port: 8698, pairingCode: 'ABC123' },
+    })).not.toThrow();
+  });
+  it('rejects a controller with no host address', () => {
+    expect(() => validateConfig({
+      ...DEFAULT_CONFIG,
+      role: 'controller',
+      remote: { host: '', port: 8698, pairingCode: 'ABC123' },
+    })).toThrow(/host address/);
+  });
+  it('rejects a host with an empty pairing code', () => {
+    expect(() => validateConfig({
+      ...DEFAULT_CONFIG,
+      role: 'host',
+      hostListen: { port: 8698, pairingCode: '' },
+    })).toThrow(/pairing code/);
+  });
+  it('rejects an out-of-range port', () => {
+    expect(() => validateConfig({
+      ...DEFAULT_CONFIG,
+      role: 'host',
+      hostListen: { port: 70000, pairingCode: 'ABC123' },
+    })).toThrow(/port/);
+  });
+});
+
+describe('launch at login', () => {
+  it('defaults to launching Hush at login', () => {
+    expect(DEFAULT_CONFIG.launchAtLogin).toBe(true);
+  });
+  it('accepts launchAtLogin disabled', () => {
+    expect(() => validateConfig({ ...DEFAULT_CONFIG, launchAtLogin: false })).not.toThrow();
+  });
+});
+
+import { preserveDiscordTokens } from '../src/config';
+
+describe('preserveDiscordTokens', () => {
+  const withTokens = {
+    clientId: 'id', clientSecret: 'secret',
+    accessToken: 'A', refreshToken: 'R', tokenExpiresAt: 123,
+  };
+
+  it('carries tokens forward when credentials are unchanged and next has none', () => {
+    const next = { clientId: 'id', clientSecret: 'secret' };
+    expect(preserveDiscordTokens(withTokens, next)).toEqual({
+      clientId: 'id', clientSecret: 'secret',
+      accessToken: 'A', refreshToken: 'R', tokenExpiresAt: 123,
+    });
+  });
+
+  it('drops tokens when the clientId changes (new Discord app invalidates them)', () => {
+    const next = { clientId: 'other', clientSecret: 'secret' };
+    expect(preserveDiscordTokens(withTokens, next)).toEqual({
+      clientId: 'other', clientSecret: 'secret',
+    });
+  });
+
+  it('drops tokens when the clientSecret changes', () => {
+    const next = { clientId: 'id', clientSecret: 'new' };
+    expect(preserveDiscordTokens(withTokens, next)).toEqual({
+      clientId: 'id', clientSecret: 'new',
+    });
+  });
+
+  it("keeps main's tokens even when the renderer echoes different ones (creds unchanged)", () => {
+    const next = {
+      clientId: 'id', clientSecret: 'secret',
+      accessToken: 'A2', refreshToken: 'R2', tokenExpiresAt: 999,
+    };
+    expect(preserveDiscordTokens(withTokens, next)).toEqual({
+      clientId: 'id', clientSecret: 'secret',
+      accessToken: 'A', refreshToken: 'R', tokenExpiresAt: 123,
+    });
+  });
 });

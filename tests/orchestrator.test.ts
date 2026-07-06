@@ -1,21 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import { Orchestrator } from '../src/orchestrator';
 import { DiscordMuter, HushConfig } from '../src/types';
+import { DEFAULT_CONFIG } from '../src/config';
 
-// Records the exact order of Discord mute/unmute calls, and models the live
-// self-mute state so getMute() reflects it (start pre-muted via `muted`).
+// Records the exact order of Discord mute/unmute calls.
 class FakeMuter implements DiscordMuter {
-  muted = false;
   constructor(readonly calls: string[]) {}
-  async setMute(on: boolean) { this.muted = on; this.calls.push(`mute:${on}`); }
-  async getMute() { return this.muted; }
+  async setMute(on: boolean) { this.calls.push(`mute:${on}`); }
 }
 
 function rig(over: Partial<HushConfig> = {}, sleep?: (ms: number) => Promise<void>) {
   const calls: string[] = [];
   const cfg: HushConfig = {
-    shortcut: { mods: ['ctrl', 'alt'], key: '' },
-    discordRpc: { clientId: '', clientSecret: '' },
+    ...DEFAULT_CONFIG,
     mode: 'hold',
     unmuteDelayMs: 0,
     ...over,
@@ -39,35 +36,6 @@ describe('Orchestrator hold mode', () => {
   });
 });
 
-describe('Orchestrator restores the prior Discord mute state', () => {
-  const cfg: HushConfig = {
-    shortcut: { mods: ['ctrl', 'alt'], key: '' },
-    discordRpc: { clientId: '', clientSecret: '' },
-    mode: 'hold',
-    unmuteDelayMs: 0,
-  };
-
-  it('leaves you muted on release if you were already muted before', async () => {
-    const calls: string[] = [];
-    const muter = new FakeMuter(calls);
-    muter.muted = true; // already self-muted in Discord
-    const o = new Orchestrator(muter, cfg);
-    await o.onPress();
-    await o.onRelease();
-    // We (idempotently) mute, but must NOT unmute someone who was already muted.
-    expect(calls).toEqual(['mute:true']);
-  });
-
-  it('unmutes on release when you were not muted before', async () => {
-    const calls: string[] = [];
-    const muter = new FakeMuter(calls); // muted === false
-    const o = new Orchestrator(muter, cfg);
-    await o.onPress();
-    await o.onRelease();
-    expect(calls).toEqual(['mute:true', 'mute:false']);
-  });
-});
-
 describe('Orchestrator transition serialization', () => {
   // A modifier-only shortcut releases only milliseconds after it presses. If the
   // async mute/unmute weren't serialized, a release arriving mid-mute could run
@@ -77,8 +45,7 @@ describe('Orchestrator transition serialization', () => {
     const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
     const calls: string[] = [];
     const cfg: HushConfig = {
-      shortcut: { mods: ['ctrl', 'alt'], key: '' },
-      discordRpc: { clientId: '', clientSecret: '' },
+      ...DEFAULT_CONFIG,
       mode: 'hold',
       unmuteDelayMs: 10,
     };
@@ -95,8 +62,7 @@ describe('Orchestrator unmute delay', () => {
     const calls: string[] = [];
     const sleep = async (ms: number) => { calls.push(`sleep:${ms}`); };
     const { o } = { o: new Orchestrator(new FakeMuter(calls), {
-      shortcut: { mods: ['ctrl', 'alt'], key: '' },
-      discordRpc: { clientId: '', clientSecret: '' },
+      ...DEFAULT_CONFIG,
       mode: 'hold',
       unmuteDelayMs: 40,
     }, undefined, sleep) };
@@ -202,8 +168,7 @@ describe('Orchestrator onActiveChange', () => {
     const calls: string[] = [];
     const seen: boolean[] = [];
     const o = new Orchestrator(new FakeMuter(calls), {
-      shortcut: { mods: ['ctrl', 'alt'], key: '' },
-      discordRpc: { clientId: '', clientSecret: '' },
+      ...DEFAULT_CONFIG,
       mode: 'hold',
       unmuteDelayMs: 0,
     }, (a) => seen.push(a));

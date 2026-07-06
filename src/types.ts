@@ -19,11 +19,6 @@ export interface InputEngine {
 // this narrow contract; the concrete RPC client lives in discord-mute.ts.
 export interface DiscordMuter {
   setMute(on: boolean): Promise<void>;
-  // The user's current Discord self-mute state, or null if unknown (not
-  // connected / query failed). Hush reads this before muting so that releasing
-  // push-to-talk restores the prior state instead of unmuting someone who was
-  // already muted. Optional so lightweight fakes needn't implement it.
-  getMute?(): Promise<boolean | null>;
 }
 
 // Credentials for the local Discord RPC connection (from the Discord dev portal).
@@ -33,6 +28,30 @@ export interface DiscordRpc {
   // Cached OAuth access token. Once you've authorized once, Hush reuses this on
   // later launches so it never pops the Discord "Authorize" prompt again.
   accessToken?: string;
+  // OAuth refresh token — renews the access token silently (no re-authorize
+  // popup) until the user revokes Hush in Discord → Authorized Apps.
+  refreshToken?: string;
+  // Epoch ms when the cached access token expires.
+  tokenExpiresAt?: number;
+}
+
+// Where Discord lives relative to this machine.
+//  - 'local'      : Discord runs here — mute it directly over RPC (default).
+//  - 'controller' : dictation happens here; mute a Discord on another machine.
+//  - 'host'       : Discord runs here; accept mute commands from a controller.
+export type Role = 'local' | 'host' | 'controller';
+
+// Controller side: how to reach the host running Discord.
+export interface RemoteConfig {
+  host: string;      // LAN IP or hostname of the host machine
+  port: number;      // host's listening port
+  pairingCode: string;
+}
+
+// Host side: how this machine listens for a controller.
+export interface HostListenConfig {
+  port: number;
+  pairingCode: string;
 }
 
 export interface HushConfig {
@@ -47,4 +66,11 @@ export interface HushConfig {
   // Optional delay before unmuting Discord on release (tail padding so the last
   // word of dictation doesn't leak back into the call).
   unmuteDelayMs: number;
+  // Cross-machine muting. 'local' keeps the original single-machine behavior.
+  role: Role;
+  remote: RemoteConfig;
+  hostListen: HostListenConfig;
+  // Launch Hush automatically when you log in to the machine. Applied via
+  // app.setLoginItemSettings; persisted so the choice survives restarts.
+  launchAtLogin: boolean;
 }
