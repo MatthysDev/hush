@@ -13,6 +13,7 @@ import { fnAvailable, isFnDown } from './fn-key';
 import { dbg, LOG_FILE } from './debug';
 import { Orchestrator } from './orchestrator';
 import { releaseBeforeQuit } from './quit-release';
+import { resolveLanguage, TRAY, TrayStrings } from './i18n';
 import { DiscordRpcMuter } from './discord-mute';
 import {
   UiohookInputEngine,
@@ -170,8 +171,14 @@ function pushStatus() {
   refreshAppMenu();
 }
 
+// UI language: the saved choice, else the system language (see i18n.ts).
+function lang(): TrayStrings {
+  return TRAY[resolveLanguage(cfg.language, app.getLocale())];
+}
+
 function rpcLabel(state: 'disconnected' | 'connecting' | 'connected'): string {
-  return state === 'connected' ? 'connecté ✓' : state === 'connecting' ? 'connexion…' : 'non connecté';
+  const s = lang();
+  return state === 'connected' ? s.connected : state === 'connecting' ? s.connecting : s.notConnected;
 }
 
 // The two "where is Discord" radio items, shared by the tray menu and the macOS
@@ -179,13 +186,13 @@ function rpcLabel(state: 'disconnected' | 'connecting' | 'connected'): string {
 function discordLocationMenuItems(): MenuItemConstructorOptions[] {
   return [
     {
-      label: 'Cette machine',
+      label: lang().thisComputer,
       type: 'radio',
       checked: cfg.role === 'local',
       click: () => switchDiscordLocation('local'),
     },
     {
-      label: cfg.remote.host ? `Autre machine — ${cfg.remote.host}` : 'Autre machine…',
+      label: cfg.remote.host ? `${lang().anotherComputer} — ${cfg.remote.host}` : lang().anotherComputerEllipsis,
       type: 'radio',
       checked: cfg.role === 'controller',
       click: () => switchDiscordLocation('controller'),
@@ -195,38 +202,40 @@ function discordLocationMenuItems(): MenuItemConstructorOptions[] {
 
 // Human label for the mute mode, including upstream's 'auto' (mirror Wispr).
 function modeLabel(mode: HushConfig['mode']): string {
-  return mode === 'auto' ? 'Auto' : mode === 'hold' ? 'Maintenir' : 'Bascule';
+  return mode === 'auto' ? 'Auto' : mode === 'hold' ? lang().modeHold : lang().modeToggle;
 }
 
 function refreshTrayMenu() {
   if (!tray) return;
+  const s = lang();
+  tray.setToolTip(`${BRAND.name} — ${s.tagline}`);
   const status = !engineReady
-    ? '⚠︎ Permissions requises'
+    ? (IS_MAC ? s.statusPerms : s.statusListenerFailed)
     : active
-      ? '● Micro coupé — dictée en cours'
-      : '○ Prêt';
+      ? s.statusMuted
+      : s.statusReady;
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: `${BRAND.name} — ${status}`, enabled: false },
       { type: 'separator' },
-      { label: `Raccourci : ${comboLabel(cfg.shortcut)}`, enabled: false },
-      { label: `Mode : ${modeLabel(cfg.mode)}`, enabled: false },
-      { label: `Discord : ${rpcLabel(discord.getState())}`, enabled: false },
+      { label: `${s.shortcut}${comboLabel(cfg.shortcut)}`, enabled: false },
+      { label: `${s.mode}${modeLabel(cfg.mode)}`, enabled: false },
+      { label: `${s.discord}${rpcLabel(discord.getState())}`, enabled: false },
       { type: 'separator' },
-      { label: 'Emplacement de Discord', enabled: false },
+      { label: s.discordLocation, enabled: false },
       ...discordLocationMenuItems(),
       ...(latestUpdate
         ? [
             { type: 'separator' as const },
             {
-              label: `⬆︎ Nouvelle version ${latestUpdate.version} — Télécharger`,
+              label: s.updateDownload.replace('{version}', latestUpdate.version),
               click: () => { const u = latestUpdate; if (u) void shell.openExternal(u.url); },
             },
           ]
         : []),
       { type: 'separator' },
-      { label: 'Réglages…', click: showWindow },
-      { label: 'Quitter Hush', click: () => app.quit() },
+      { label: s.settings, click: showWindow },
+      { label: s.quitHush, click: () => app.quit() },
     ]),
   );
 }
@@ -237,7 +246,8 @@ function refreshTrayMenu() {
 // fields — needed to paste the Discord Client ID / Secret.
 function refreshAppMenu(): void {
   if (process.platform !== 'darwin') return;
-  const sig = `${cfg.role}|${cfg.remote.host}`;
+  const s = lang();
+  const sig = `${cfg.role}|${cfg.remote.host}|${s.quit}`;
   if (sig === lastAppMenuSig) return;
   lastAppMenuSig = sig;
   Menu.setApplicationMenu(
@@ -245,21 +255,21 @@ function refreshAppMenu(): void {
       {
         label: BRAND.name,
         submenu: [
-          { role: 'about', label: `À propos de ${BRAND.name}` },
+          { role: 'about', label: `${s.about} ${BRAND.name}` },
           { type: 'separator' },
-          { role: 'quit', label: `Quitter ${BRAND.name}` },
+          { role: 'quit', label: `${s.quit} ${BRAND.name}` },
         ],
       },
       {
-        label: 'Édition',
+        label: s.edit,
         submenu: [
-          { role: 'undo', label: 'Annuler' },
-          { role: 'redo', label: 'Rétablir' },
+          { role: 'undo', label: s.undo },
+          { role: 'redo', label: s.redo },
           { type: 'separator' },
-          { role: 'cut', label: 'Couper' },
-          { role: 'copy', label: 'Copier' },
-          { role: 'paste', label: 'Coller' },
-          { role: 'selectAll', label: 'Tout sélectionner' },
+          { role: 'cut', label: s.cut },
+          { role: 'copy', label: s.copy },
+          { role: 'paste', label: s.paste },
+          { role: 'selectAll', label: s.selectAll },
         ],
       },
       {
@@ -267,7 +277,7 @@ function refreshAppMenu(): void {
         submenu: [
           ...discordLocationMenuItems(),
           { type: 'separator' },
-          { label: 'Réglages…', click: showWindow },
+          { label: s.settings, click: showWindow },
         ],
       },
     ]),
@@ -640,7 +650,6 @@ if (!app.requestSingleInstanceLock()) {
 
     readTaskbarTheme();
     tray = new Tray(trayImage('trayIdleTemplate'));
-    tray.setToolTip(`${BRAND.name} — ${BRAND.taglineFr}`);
     tray.on('click', showWindow);
     // Windows: re-tint the tray icon when the taskbar switches light/dark.
     nativeTheme.on('updated', () => { readTaskbarTheme(); pushStatus(); });
@@ -685,7 +694,8 @@ if (!app.requestSingleInstanceLock()) {
     // ---- IPC ----
     ipcMain.handle('config:get', () => cfg);
     ipcMain.handle('app:version', () => app.getVersion());
-    ipcMain.handle('brand:get', () => ({ name: BRAND.name, tagline: BRAND.taglineFr }));
+    ipcMain.handle('brand:get', () => ({ name: BRAND.name, tagline: lang().tagline }));
+    ipcMain.handle('app:language', () => resolveLanguage(cfg.language, app.getLocale()));
     ipcMain.handle('config:set', (_e, next: HushConfig) => {
       try {
         const prev = cfg; // note: cfg is reassigned inside applyConfig(saved)

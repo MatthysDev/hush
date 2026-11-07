@@ -23,10 +23,36 @@ function comboLabel(combo) {
   return glyphs + combo.key.toUpperCase();
 }
 
+// ---- Language ----
+// Strings live in i18n.js (window.HUSH_I18N), one table per language. LANG is
+// resolved by the main process (saved choice, else the system language).
+const I18N = window.HUSH_I18N;
+let LANG = 'en';
+
+// Look up a UI string in the current language (falling back to English), and
+// fill {placeholders} from vars.
+function t(key, vars) {
+  let str = (I18N[LANG] && I18N[LANG][key]) ?? I18N.en[key] ?? key;
+  if (vars) for (const [k, v] of Object.entries(vars)) str = str.split(`{${k}}`).join(String(v));
+  return str;
+}
+
 // Capture hint, per platform (Fn only exists on Mac keyboards).
-const CAPTURE_HINT = IS_MAC
-  ? 'Clique puis presse ta touche. Modificateurs seuls (ex. ⌃⌥) : maintiens puis relâche. Fn (🌐) supportée. Échap = annuler.'
-  : 'Clique puis presse ta touche. Modificateurs seuls (ex. Ctrl + Win, le défaut de Wispr sur Windows) : maintiens puis relâche. Échap = annuler.';
+function captureHint() {
+  return t(IS_MAC ? 'captureHintMac' : 'captureHintWin');
+}
+
+// Re-render every static string tagged with data-i18n / data-i18n-title. Tagged
+// elements never contain id'd children, so replacing their HTML is safe.
+function applyStaticI18n() {
+  document.documentElement.lang = LANG;
+  for (const el of document.querySelectorAll('[data-i18n]')) el.innerHTML = t(el.dataset.i18n);
+  for (const el of document.querySelectorAll('[data-i18n-title]')) el.title = t(el.dataset.i18nTitle);
+  document.getElementById('capture-hint').textContent = captureHint();
+  for (const b of document.querySelectorAll('#lang-seg button')) {
+    b.classList.toggle('active', b.dataset.lang === LANG);
+  }
+}
 
 let cfg = null;
 let armedField = null;
@@ -124,7 +150,7 @@ function reflectRoleControls(refs) {
 
 async function refreshHostAddrs(refs) {
   const info = await window.hush.lanInfo();
-  refs.hostAddrs.textContent = info.addresses.length ? info.addresses.join(', ') : 'aucune IP LAN';
+  refs.hostAddrs.textContent = info.addresses.length ? info.addresses.join(', ') : t('noLanIp');
 }
 
 // Pull the RPC credentials out of whichever inputs are on screen into cfg,
@@ -144,7 +170,7 @@ async function captureInto(field, btnEl) {
   armedField = field;
   clearError();
   btnEl.classList.add('armed');
-  btnEl.textContent = 'Appuie…';
+  btnEl.textContent = t('pressShortcut');
 
   const res = await window.hush.captureCombo();
 
@@ -152,13 +178,9 @@ async function captureInto(field, btnEl) {
     cfg[field] = res.combo;
     await persist();
   } else if (res.reason === 'unsupported') {
-    showError(IS_MAC
-      ? 'Touche non gérée — utilise une lettre, un chiffre ou F1–F24 (avec ⌃⌥⌘⇧ en option).'
-      : 'Touche non gérée — utilise une lettre, un chiffre ou F1–F24 (avec Ctrl/Alt/Win/Shift en option).');
+    showError(t(IS_MAC ? 'unsupportedMac' : 'unsupportedWin'));
   } else if (res.reason === 'timeout') {
-    showError(IS_MAC
-      ? 'Rien capté. Active « Surveillance de la saisie » pour Hush, puis relance l\'app.'
-      : 'Rien capté en 8 s — reclique et presse ton raccourci.');
+    showError(t(IS_MAC ? 'timeoutMac' : 'timeoutWin'));
   }
 
   btnEl.classList.remove('armed');
@@ -190,7 +212,7 @@ els.launchAtLogin.addEventListener('change', async () => {
   await persist();
 });
 
-// ---- Où est Discord ? (cross-machine role) ----
+// ---- Where is Discord? (cross-machine role) ----
 // Wire a full set of role controls (segment, host toggle, discover, remote/host
 // fields, connect, regen) onto the shared persist()/discover/genCode handlers.
 // Live `input` listeners keep cfg.remote / cfg.hostListen current, so persist()
@@ -216,9 +238,9 @@ function wireRoleControls(refs) {
   refs.remoteCode.addEventListener('input', syncRemote);
   refs.hostPort.addEventListener('input', syncHost);
 
-  // Segment: Cette machine / Autre machine. Persist immediately so the switch
+  // Segment: This computer / Another computer. Persist immediately so the switch
   // takes effect without a Save; controller persists only when a remote config
-  // is already known (otherwise just reveal the panel and wait for Connecter).
+  // is already known (otherwise just reveal the panel and wait for Connect).
   refs.roleSeg.addEventListener('click', async (e) => {
     const r = e.target.dataset.role;
     if (!r) return;
@@ -257,11 +279,11 @@ function wireRoleControls(refs) {
   });
 
   refs.discoverBtn.addEventListener('click', async () => {
-    refs.hostList.innerHTML = '<li>Recherche…</li>';
+    refs.hostList.innerHTML = `<li>${t('searching')}</li>`;
     const hosts = await window.hush.discoverHosts();
     refs.hostList.innerHTML = '';
     if (!hosts.length) {
-      refs.hostList.innerHTML = "<li>Aucun hôte trouvé — saisis l'IP.</li>";
+      refs.hostList.innerHTML = `<li>${t('noHost')}</li>`;
       return;
     }
     for (const h of hosts) {
@@ -279,10 +301,10 @@ function wireRoleControls(refs) {
   refs.remoteConnect.addEventListener('click', async () => {
     cfg.role = 'controller';
     syncRemote();
-    refs.remoteStatus.textContent = 'Connexion…';
+    refs.remoteStatus.textContent = t('connecting');
     refs.remoteStatus.className = 'pill pill-warn';
     if (!(await persist())) {
-      refs.remoteStatus.textContent = 'Non connecté';
+      refs.remoteStatus.textContent = t('notConnected');
       refs.remoteStatus.className = 'pill pill-off';
     }
   });
@@ -300,24 +322,24 @@ async function persist() {
   return true;
 }
 
-// Map validateConfig's (English) error strings to a French message for the UI.
+// Map validateConfig's technical error strings to a friendlier message for the UI.
 function translateConfigError(error) {
   if (error.includes('shortcut must have')) {
-    return 'Choisis un vrai raccourci (au moins une touche ou un modificateur).';
+    return t('errShortcut');
   } else if (error.includes('host address')) {
-    return "Renseigne l'adresse (IP) du PC qui héberge Discord.";
+    return t('errHost');
   } else if (error.includes('pairing code')) {
-    return 'Renseigne un code d\'appairage.';
+    return t('errCode');
   } else if (error.includes('port')) {
-    return 'Port invalide (doit être entre 1 et 65535).';
+    return t('errPort');
   }
   return error;
 }
 
 els.save.addEventListener('click', async () => {
   if (await persist()) {
-    els.save.textContent = '✓ Enregistré';
-    setTimeout(() => (els.save.textContent = 'Enregistrer'), 1200);
+    els.save.textContent = t('saved');
+    setTimeout(() => (els.save.textContent = t('save')), 1200);
   }
 });
 
@@ -340,29 +362,32 @@ els.openAcc.addEventListener('click', () => window.hush.openAccessibility());
 els.openInput.addEventListener('click', () => window.hush.openInputMonitoring());
 
 // ---- Status + permissions ----
+// Last status pushed by main — re-applied when an onboarding step renders, so
+// a step opened after the push still shows the current Discord state/error.
+let lastStatus = null;
+
 function setStatus(s) {
+  lastStatus = s;
   if (!s.engineReady) {
     els.statusDot.className = 'dot warn';
-    els.statusLabel.textContent = 'Permissions requises';
+    els.statusLabel.textContent = t(IS_MAC ? 'statusPerms' : 'statusListenerFailed');
   } else if (s.active) {
     els.statusDot.className = 'dot active';
-    els.statusLabel.textContent = 'Micro coupé';
+    els.statusLabel.textContent = t('statusMuted');
   } else {
     els.statusDot.className = 'dot idle';
-    els.statusLabel.textContent = 'Prêt';
+    els.statusLabel.textContent = t('statusReady');
   }
   setRpcPill(els.rpcState, s.rpc);
   const ob = $('ob-rpc-state');
   if (ob) setRpcPill(ob, s.rpc);
   // Surface the real reason a connection failed (esp. useful on Windows) instead
-  // of a silent "Non connecté".
-  if (els.rpcError) {
-    if (s.rpc !== 'connected' && s.rpcError) {
-      els.rpcError.textContent = `Discord : ${s.rpcError}`;
-      els.rpcError.hidden = false;
-    } else {
-      els.rpcError.hidden = true;
-    }
+  // of a silent "Not connected" — in the window and in the onboarding step.
+  const rpcMsg = s.rpc !== 'connected' && s.rpcError ? explainRpcError(s.rpcError) : '';
+  for (const el of [els.rpcError, $('ob-rpc-error')]) {
+    if (!el) continue;
+    el.textContent = rpcMsg;
+    el.hidden = !rpcMsg;
   }
   // Live remote-connection status (controller role) from the main process.
   if (s.role === 'controller') {
@@ -374,22 +399,22 @@ function setStatus(s) {
       if (obStatus) { obStatus.textContent = text; obStatus.className = cls; }
     };
     if (r.state === 'connected') {
-      setRemote('Connecté ✓', 'pill pill-ok');
+      setRemote(t('connected'), 'pill pill-ok');
       if (help) help.hidden = true;
     } else if (r.state === 'connecting') {
-      setRemote('Connexion…', 'pill pill-warn');
+      setRemote(t('connecting'), 'pill pill-warn');
       if (help) help.hidden = true;
     } else {
-      setRemote(r.error ? `Échec : ${r.error}` : 'Recherche de l’hôte…', 'pill pill-warn');
+      setRemote(r.error ? t('remoteFailed', { error: r.error }) : t('lookingForHost'), 'pill pill-warn');
       if (help) {
-        help.textContent = "Vérifie : Hush ouvert sur le PC hôte · les deux machines sur le même réseau · IP et code exacts · le pare-feu du PC autorise le port " + (cfg.remote?.port || 8698) + '.';
+        help.textContent = t('remoteHelp', { port: cfg.remote?.port || 8698 });
         help.hidden = false;
       }
     }
   }
   // Update-available banner (from the main-process release check).
   if (s.update && s.update.version && s.update.url) {
-    els.updateText.textContent = `Nouvelle version ${s.update.version} disponible`;
+    els.updateText.textContent = t('updateAvailable', { version: s.update.version });
     els.updateDownload.onclick = () => window.hush.openExternal(s.update.url);
     els.updateBanner.hidden = false;
   } else {
@@ -397,31 +422,42 @@ function setStatus(s) {
   }
 }
 
+// Turn Discord's raw RPC/OAuth errors into what the user should actually do.
+function explainRpcError(raw) {
+  if (/missing Client ID/i.test(raw)) return t('rpcErrMissing');
+  if (/redirect_uri/i.test(raw)) return t('rpcErrRedirect');
+  if (/invalid_client|client_secret|401/i.test(raw)) return t('rpcErrCreds');
+  if (/ENOENT|connection closed|could not connect|timed? ?out/i.test(raw)) {
+    return t('rpcErrUnreachable', { error: raw });
+  }
+  return t('rpcErrOther', { error: raw });
+}
+
 function setRpcPill(el, state) {
   if (!el) return;
-  if (state === 'connected') { el.textContent = 'Connecté ✓'; el.className = 'pill pill-ok'; }
-  else if (state === 'connecting') { el.textContent = 'Connexion…'; el.className = 'pill pill-warn'; }
-  else { el.textContent = 'Non connecté'; el.className = 'pill pill-off'; }
+  if (state === 'connected') { el.textContent = t('connected'); el.className = 'pill pill-ok'; }
+  else if (state === 'connecting') { el.textContent = t('connecting'); el.className = 'pill pill-warn'; }
+  else { el.textContent = t('notConnected'); el.className = 'pill pill-off'; }
 }
 
 window.hush.onStatus(setStatus);
 
 function setPill(el, ok, label) {
-  el.textContent = `${label} : ${ok ? 'OK' : 'à activer'}`;
+  el.textContent = t('pill', { label, state: ok ? 'OK' : t('needsEnabling') });
   el.className = ok ? 'pill pill-ok' : 'pill pill-warn';
 }
 
 async function refreshPermissions() {
   if (!IS_MAC) return; // macOS-only TCC permissions; nothing to show elsewhere
   const p = await window.hush.getPermissions();
-  setPill(els.accState, p.accessibility, 'Accessibilité');
-  setPill(els.inputState, p.inputMonitoring, 'Surveillance de la saisie');
-  const a = $('ob-acc'); if (a) setPill(a, p.accessibility, 'Accessibilité');
-  const i = $('ob-input'); if (i) setPill(i, p.inputMonitoring, 'Surveillance de la saisie');
+  setPill(els.accState, p.accessibility, t('accessibility'));
+  setPill(els.inputState, p.inputMonitoring, t('inputMonitoring'));
+  const a = $('ob-acc'); if (a) setPill(a, p.accessibility, t('accessibility'));
+  const i = $('ob-input'); if (i) setPill(i, p.inputMonitoring, t('inputMonitoring'));
 }
 
 // macOS only, installed app only: let the user drag Hush straight into the
-// Privacy list. Falls back silently to the "Ouvrir" buttons when unavailable.
+// Privacy list. Falls back silently to the "Open" buttons when unavailable.
 let permCanDrag = false;
 function wirePermDrag(el) {
   if (!el || el.dataset.wired) return;
@@ -437,155 +473,176 @@ async function initPermDrag() {
 }
 
 // ---- Onboarding tutorial ----
-const STEPS = [
-  {
-    glyph: '🤫',
-    title: 'Bienvenue dans Hush',
-    body: `<p>Tu dictes déjà avec Wispr Flow en tenant un raccourci. Hush <strong>coupe ton micro Discord</strong> pendant que tu le tiens — tu relâches, ton micro revient. Personne ne t'entend dicter.</p>
-      <p>Quelques minutes de réglage : ${IS_MAC ? 'les permissions macOS, ' : ''}la connexion à Discord et ton raccourci. C'est parti.</p>`,
-  },
-  {
-    macOnly: true,
-    glyph: '🔐',
-    title: 'Permissions macOS',
-    body: `<p>Hush a besoin de deux autorisations pour repérer quand tu tiens ton raccourci.</p>
-      <div class="perm-row"><span id="ob-acc" class="pill pill-warn">Accessibilité : à activer</span><button class="ghost" id="ob-open-acc">Ouvrir</button></div>
-      <div class="perm-row"><span id="ob-input" class="pill pill-warn">Surveillance de la saisie : à activer</span><button class="ghost" id="ob-open-input">Ouvrir</button></div>
-      <p style="margin-top:12px">Active <strong>Hush</strong> dans chaque volet. Si rien n'apparaît, l'entrée se crée dès le premier déclenchement.</p>
-      <div class="perm-drag" data-permdrag hidden draggable="true" title="Glisse-moi dans la liste">
-        <img src="../assets/generated/icon-256.png" alt="" width="40" height="40" />
-        <div class="perm-drag-txt"><strong>Ou glisse Hush directement dans la liste</strong><span class="muted">Fais-moi glisser dans le volet ouvert, puis coche-moi.</span></div>
-      </div>`,
-    wire(root) {
-      root.querySelector('#ob-open-acc').onclick = () => window.hush.openAccessibility();
-      root.querySelector('#ob-open-input').onclick = () => window.hush.openInputMonitoring();
-      const d = root.querySelector('[data-permdrag]');
-      if (d && permCanDrag) { d.hidden = false; wirePermDrag(d); }
-      refreshPermissions();
-    },
-  },
-  {
-    key: 'discord',
-    glyph: '🎙️',
-    title: 'Connecter Discord',
-    body: `<p>Hush coupe Discord via son socket local — il te faut une petite app Discord (gratuit, 2 min) :</p>
-      <ol>
-        <li>Va sur <a class="link" id="ob-portal" href="#">discord.com/developers</a> → <strong>New Application</strong>.</li>
-        <li>Menu <strong>OAuth2</strong> → copie le <strong>Client ID</strong> et un <strong>Client Secret</strong> (Reset Secret).</li>
-        <li>Section <strong>Redirects</strong> → ajoute <code>http://localhost</code> puis <strong>Save</strong>.</li>
-      </ol>
-      <div class="callout">⚠️ Le <strong>redirect</strong> <code>http://localhost</code> est obligatoire — sans lui, la connexion échoue (« Missing redirect_uri »).</div>
-      <div class="field"><label for="ob-rpc-id">Client ID</label><input id="ob-rpc-id" type="text" spellcheck="false" placeholder="123456789012345678" /></div>
-      <div class="field"><label for="ob-rpc-secret">Client Secret</label><input id="ob-rpc-secret" type="password" spellcheck="false" placeholder="••••••••••••" /></div>
-      <div class="row-actions"><button class="ghost" id="ob-connect">Connecter</button><span id="ob-rpc-state" class="pill pill-off">Non connecté</span></div>
-      <p style="margin-top:10px">Discord doit être <strong>ouvert</strong>. Une popup d'autorisation apparaîtra → <strong>Authorize</strong>.</p>`,
-    wire(root) {
-      const id = root.querySelector('#ob-rpc-id');
-      const secret = root.querySelector('#ob-rpc-secret');
-      id.value = cfg.discordRpc.clientId || '';
-      secret.value = cfg.discordRpc.clientSecret || '';
-      root.querySelector('#ob-portal').onclick = (e) => { e.preventDefault(); window.hush.openExternal('https://discord.com/developers/applications'); };
-      root.querySelector('#ob-connect').onclick = () => connectRpc(id, secret);
-    },
-  },
-  {
-    glyph: '⌨️',
-    title: 'Ton raccourci',
-    body: `<p>Un seul réglage : ton <strong>push-to-talk</strong>. Mets <strong>exactement</strong> le même raccourci que dans Wispr Flow (Réglages → General → Shortcuts).</p>
-      <p>Hush ne simule rien : tu presses ce raccourci toi-même, Wispr dicte comme d'habitude, et Hush coupe Discord pendant que tu dictes.</p>
-      <div class="binding">
-        <div class="binding-label"><strong>Push-to-talk</strong><span class="muted">identique à Wispr → Raccourcis</span></div>
-        <button class="capture" id="ob-cap-shortcut">⌃⌥</button>
-      </div>
-      <p class="hint">${CAPTURE_HINT}</p>
-      <div class="binding">
-        <div class="binding-label"><strong>Mode</strong><span class="muted">comme dans Wispr</span></div>
-        <div class="segment" id="ob-mode-seg">
-          <button type="button" data-mode="auto" class="active">Auto</button>
-          <button type="button" data-mode="hold">Maintenir</button>
-          <button type="button" data-mode="toggle">Bascule</button>
-        </div>
-      </div>
-      <div class="callout">🎯 <strong>Auto</strong> (recommandé) détecte tout seul : tu <strong>tiens</strong> → push-to-talk ; tu <strong>double-tapes</strong> → mains-libres (Discord reste muet), un tap pour finir — comme Wispr. <strong>Maintenir</strong> : coupé tant que tu tiens. <strong>Bascule</strong> : 1er appui coupe, 2e réactive.</div>`,
-    wire(root) {
-      const btn = root.querySelector('#ob-cap-shortcut');
-      btn.textContent = comboLabel(cfg.shortcut);
-      btn.onclick = () => captureInto('shortcut', btn);
+// The English / Français switch shown on the welcome step and in Behavior.
+function langSegment(id) {
+  return `<div class="segment" id="${id}">
+    <button type="button" data-lang="en" class="${LANG === 'en' ? 'active' : ''}">English</button>
+    <button type="button" data-lang="fr" class="${LANG === 'fr' ? 'active' : ''}">Français</button>
+  </div>`;
+}
 
-      const modeSeg = root.querySelector('#ob-mode-seg');
-      for (const b of modeSeg.querySelectorAll('button')) {
-        b.classList.toggle('active', b.dataset.mode === cfg.mode);
-      }
-      modeSeg.addEventListener('click', async (e) => {
-        const m = e.target.dataset.mode;
-        if (!m) return;
-        cfg.mode = m;
-        for (const b of modeSeg.querySelectorAll('button')) b.classList.toggle('active', b.dataset.mode === m);
-        await persist();   // no Save button in the tutorial → persist immediately
-        render();          // keep the window's Comportement segment in sync
-      });
-    },
-  },
-  {
-    glyph: '🖥️',
-    title: 'Où est Discord ?',
-    body: `<p>Sur <strong>cette machine</strong>, ou sur un <strong>autre PC</strong> (setup double PC) — Hush le coupe dans les deux cas.</p>
-      <div class="binding">
-        <div class="binding-label"><strong>Emplacement de Discord</strong></div>
-        <div class="segment" id="ob-role-seg">
-          <button type="button" data-role="local" class="active">Cette machine</button>
-          <button type="button" data-role="controller">Autre machine</button>
+// Built on every render so the steps follow the current language.
+function buildSteps() {
+  return [
+    {
+      glyph: '🤫',
+      title: t('obWelcomeTitle'),
+      body: `<div class="binding">
+          <div class="binding-label"><strong>${t('language')}</strong></div>
+          ${langSegment('ob-lang-seg')}
         </div>
-      </div>
-      <div id="ob-controller-panel" hidden>
-        <p class="hint">Ce Mac va commander le Discord de l'autre PC.</p>
-        <div class="row-actions"><button class="ghost" id="ob-discover-btn" type="button">Rechercher les hôtes…</button></div>
-        <ul id="ob-host-list"></ul>
-        <div class="field"><label for="ob-remote-host">Adresse (IP) du PC hôte</label><input id="ob-remote-host" type="text" spellcheck="false" placeholder="192.168.1.20" /></div>
-        <div class="field"><label for="ob-remote-port">Port</label><input id="ob-remote-port" type="number" value="8698" /></div>
-        <div class="field"><label for="ob-remote-code">Code d'appairage</label><input id="ob-remote-code" type="text" spellcheck="false" placeholder="ABC123" /></div>
-        <div class="row-actions"><button class="primary" id="ob-remote-connect" type="button">Connecter</button><span id="ob-remote-status" class="pill pill-off">Non connecté</span></div>
-      </div>
-      <hr />
-      <div class="perm-row"><span><strong>Cette machine héberge Discord</strong> <span class="muted">— pour une autre machine</span></span><input type="checkbox" id="ob-host-toggle" /></div>
-      <div id="ob-host-panel" hidden>
-        <p class="muted">Adresse(s) : <strong id="ob-host-addrs">—</strong></p>
-        <div class="field"><label for="ob-host-port">Port</label><input id="ob-host-port" type="number" value="8698" /></div>
-        <div class="field"><label for="ob-host-code">Code d'appairage</label><input id="ob-host-code" type="text" readonly /></div>
-        <div class="row-actions"><button class="ghost" id="ob-regen-code-btn" type="button">Régénérer le code</button></div>
-      </div>
-      <div class="callout">Les deux machines doivent être sur le <strong>même réseau</strong> (Wi-Fi/box). En simple PC, laisse « Cette machine ».</div>`,
-    wire(root) {
-      const refs = {
-        roleSeg: root.querySelector('#ob-role-seg'),
-        controllerPanel: root.querySelector('#ob-controller-panel'),
-        discoverBtn: root.querySelector('#ob-discover-btn'),
-        hostList: root.querySelector('#ob-host-list'),
-        remoteHost: root.querySelector('#ob-remote-host'),
-        remotePort: root.querySelector('#ob-remote-port'),
-        remoteCode: root.querySelector('#ob-remote-code'),
-        remoteConnect: root.querySelector('#ob-remote-connect'),
-        remoteStatus: root.querySelector('#ob-remote-status'),
-        hostToggle: root.querySelector('#ob-host-toggle'),
-        hostPanel: root.querySelector('#ob-host-panel'),
-        hostAddrs: root.querySelector('#ob-host-addrs'),
-        hostPort: root.querySelector('#ob-host-port'),
-        hostCode: root.querySelector('#ob-host-code'),
-        regenCodeBtn: root.querySelector('#ob-regen-code-btn'),
-      };
-      // Reflect current cfg into the freshly-rendered controls, then wire them.
-      reflectRoleControls(refs);
-      if (cfg.role === 'host') refreshHostAddrs(refs);
-      wireRoleControls(refs);
+        ${t('obWelcomeBody', { perms: IS_MAC ? t('obWelcomePerms') : '' })}`,
+      wire(root) {
+        root.querySelector('#ob-lang-seg').addEventListener('click', (e) => {
+          const l = e.target.dataset.lang;
+          if (l) void setLanguage(l);
+        });
+      },
     },
-  },
-  {
-    glyph: '✅',
-    title: 'Tout est prêt',
-    body: `<p>Hush vit dans la <strong>barre de menus</strong> (en haut à droite). Tiens ton raccourci : Discord se coupe et Wispr dicte. Relâche : ton micro revient.</p>
-      <p>Tu peux rouvrir ce tuto à tout moment via « Revoir le tuto ».</p>`,
-  },
-];
+    {
+      macOnly: true,
+      glyph: '🔐',
+      title: t('permTitle'),
+      body: `<p>${t('obPermIntro')}</p>
+        <div class="perm-row"><span id="ob-acc" class="pill pill-warn">${t('pill', { label: t('accessibility'), state: t('needsEnabling') })}</span><button class="ghost" id="ob-open-acc">${t('open')}</button></div>
+        <div class="perm-row"><span id="ob-input" class="pill pill-warn">${t('pill', { label: t('inputMonitoring'), state: t('needsEnabling') })}</span><button class="ghost" id="ob-open-input">${t('open')}</button></div>
+        <p style="margin-top:12px">${t('obPermEnable')}</p>
+        <div class="perm-drag" data-permdrag hidden draggable="true" title="${t('dragTitle')}">
+          <img src="../assets/generated/icon-256.png" alt="" width="40" height="40" />
+          <div class="perm-drag-txt"><strong>${t('dragHeading')}</strong><span class="muted">${t('obDragBody')}</span></div>
+        </div>`,
+      wire(root) {
+        root.querySelector('#ob-open-acc').onclick = () => window.hush.openAccessibility();
+        root.querySelector('#ob-open-input').onclick = () => window.hush.openInputMonitoring();
+        const d = root.querySelector('[data-permdrag]');
+        if (d && permCanDrag) { d.hidden = false; wirePermDrag(d); }
+        refreshPermissions();
+      },
+    },
+    {
+      key: 'discord',
+      glyph: '🎙️',
+      title: t('obDiscordTitle'),
+      body: `<p>${t('obDiscordIntro')}</p>
+        <ol>
+          <li>${t('obDiscordStep1', { portal: '<a class="link" id="ob-portal" href="#">discord.com/developers</a>' })}</li>
+          <li>${t('obDiscordStep2')}</li>
+          <li>${t('obDiscordStep3')}</li>
+        </ol>
+        <div class="callout">${t('obRedirectCallout')}</div>
+        <div class="field"><label for="ob-rpc-id">Client ID</label><input id="ob-rpc-id" type="text" spellcheck="false" placeholder="123456789012345678" /></div>
+        <div class="field"><label for="ob-rpc-secret">Client Secret</label><input id="ob-rpc-secret" type="password" spellcheck="false" placeholder="••••••••••••" /></div>
+        <div class="row-actions"><button class="ghost" id="ob-connect">${t('connect')}</button><span id="ob-rpc-state" class="pill pill-off">${t('notConnected')}</span></div>
+        <p class="err" id="ob-rpc-error" hidden></p>
+        <p style="margin-top:10px">${t('obDiscordOpen')}</p>`,
+      wire(root) {
+        const id = root.querySelector('#ob-rpc-id');
+        const secret = root.querySelector('#ob-rpc-secret');
+        id.value = cfg.discordRpc.clientId || '';
+        secret.value = cfg.discordRpc.clientSecret || '';
+        root.querySelector('#ob-portal').onclick = (e) => { e.preventDefault(); window.hush.openExternal('https://discord.com/developers/applications'); };
+        root.querySelector('#ob-connect').onclick = () => connectRpc(id, secret);
+        if (lastStatus) setStatus(lastStatus); // show the current state/error right away
+      },
+    },
+    {
+      glyph: '⌨️',
+      title: t('shortcutTitle'),
+      body: `<p>${t('obShortcutIntro')}</p>
+        <p>${t('obShortcutNoSim')}</p>
+        <div class="binding">
+          <div class="binding-label"><strong>Push-to-talk</strong><span class="muted">${t('obPttHint')}</span></div>
+          <button class="capture" id="ob-cap-shortcut">⌃⌥</button>
+        </div>
+        <p class="hint">${captureHint()}</p>
+        <div class="binding">
+          <div class="binding-label"><strong>Mode</strong><span class="muted">${t('obModeHint')}</span></div>
+          <div class="segment" id="ob-mode-seg">
+            <button type="button" data-mode="auto" class="active">Auto</button>
+            <button type="button" data-mode="hold">${t('modeHold')}</button>
+            <button type="button" data-mode="toggle">${t('modeToggle')}</button>
+          </div>
+        </div>
+        <div class="callout">${t('obModeCallout')}</div>`,
+      wire(root) {
+        const btn = root.querySelector('#ob-cap-shortcut');
+        btn.textContent = comboLabel(cfg.shortcut);
+        btn.onclick = () => captureInto('shortcut', btn);
+
+        const modeSeg = root.querySelector('#ob-mode-seg');
+        for (const b of modeSeg.querySelectorAll('button')) {
+          b.classList.toggle('active', b.dataset.mode === cfg.mode);
+        }
+        modeSeg.addEventListener('click', async (e) => {
+          const m = e.target.dataset.mode;
+          if (!m) return;
+          cfg.mode = m;
+          for (const b of modeSeg.querySelectorAll('button')) b.classList.toggle('active', b.dataset.mode === m);
+          await persist();   // no Save button in the tutorial → persist immediately
+          render();          // keep the window's Behavior segment in sync
+        });
+      },
+    },
+    {
+      glyph: '🖥️',
+      title: t('whereTitle'),
+      body: `<p>${t('obWhereIntro')}</p>
+        <div class="binding">
+          <div class="binding-label"><strong>${t('discordLocation')}</strong></div>
+          <div class="segment" id="ob-role-seg">
+            <button type="button" data-role="local" class="active">${t('thisComputer')}</button>
+            <button type="button" data-role="controller">${t('anotherComputer')}</button>
+          </div>
+        </div>
+        <div id="ob-controller-panel" hidden>
+          <p class="hint">${t('obControllerHint')}</p>
+          <div class="row-actions"><button class="ghost" id="ob-discover-btn" type="button">${t('findHosts')}</button></div>
+          <ul id="ob-host-list"></ul>
+          <div class="field"><label for="ob-remote-host">${t('hostIpLabel')}</label><input id="ob-remote-host" type="text" spellcheck="false" placeholder="192.168.1.20" /></div>
+          <div class="field"><label for="ob-remote-port">${t('port')}</label><input id="ob-remote-port" type="number" value="8698" /></div>
+          <div class="field"><label for="ob-remote-code">${t('pairingCode')}</label><input id="ob-remote-code" type="text" spellcheck="false" placeholder="ABC123" /></div>
+          <div class="row-actions"><button class="primary" id="ob-remote-connect" type="button">${t('connect')}</button><span id="ob-remote-status" class="pill pill-off">${t('notConnected')}</span></div>
+        </div>
+        <hr />
+        <div class="perm-row"><span>${t('hostsDiscord')}</span><input type="checkbox" id="ob-host-toggle" /></div>
+        <div id="ob-host-panel" hidden>
+          <p class="muted">${t('addresses')} <strong id="ob-host-addrs">—</strong></p>
+          <div class="field"><label for="ob-host-port">${t('port')}</label><input id="ob-host-port" type="number" value="8698" /></div>
+          <div class="field"><label for="ob-host-code">${t('pairingCode')}</label><input id="ob-host-code" type="text" readonly /></div>
+          <div class="row-actions"><button class="ghost" id="ob-regen-code-btn" type="button">${t('regenCode')}</button></div>
+        </div>
+        <div class="callout">${t('obSameNetwork')}</div>`,
+      wire(root) {
+        const refs = {
+          roleSeg: root.querySelector('#ob-role-seg'),
+          controllerPanel: root.querySelector('#ob-controller-panel'),
+          discoverBtn: root.querySelector('#ob-discover-btn'),
+          hostList: root.querySelector('#ob-host-list'),
+          remoteHost: root.querySelector('#ob-remote-host'),
+          remotePort: root.querySelector('#ob-remote-port'),
+          remoteCode: root.querySelector('#ob-remote-code'),
+          remoteConnect: root.querySelector('#ob-remote-connect'),
+          remoteStatus: root.querySelector('#ob-remote-status'),
+          hostToggle: root.querySelector('#ob-host-toggle'),
+          hostPanel: root.querySelector('#ob-host-panel'),
+          hostAddrs: root.querySelector('#ob-host-addrs'),
+          hostPort: root.querySelector('#ob-host-port'),
+          hostCode: root.querySelector('#ob-host-code'),
+          regenCodeBtn: root.querySelector('#ob-regen-code-btn'),
+        };
+        // Reflect current cfg into the freshly-rendered controls, then wire them.
+        reflectRoleControls(refs);
+        if (cfg.role === 'host') refreshHostAddrs(refs);
+        wireRoleControls(refs);
+      },
+    },
+    {
+      glyph: '✅',
+      title: t('obDoneTitle'),
+      body: t('obDoneBody', { where: t(IS_MAC ? 'trayWhereMac' : 'trayWhereWin') }),
+    },
+  ];
+}
 
 let obIndex = 0;
 const ob = {
@@ -599,15 +656,18 @@ const ob = {
 
 // The onboarding steps that apply to this platform (drops macOS-only steps
 // elsewhere, so indices below are platform-relative — target steps by key).
-const steps = STEPS.filter((s) => !s.macOnly || IS_MAC);
+function steps() {
+  return buildSteps().filter((s) => !s.macOnly || IS_MAC);
+}
 
 function renderStep() {
-  const s = steps[obIndex];
-  ob.steps.innerHTML = steps.map((_, i) => `<i class="${i <= obIndex ? 'done' : ''}"></i>`).join('');
+  const list = steps();
+  const s = list[obIndex];
+  ob.steps.innerHTML = list.map((_, i) => `<i class="${i <= obIndex ? 'done' : ''}"></i>`).join('');
   ob.body.innerHTML = `<span class="glyph">${s.glyph}</span><h3>${s.title}</h3>${s.body}`;
   if (typeof s.wire === 'function') s.wire(ob.body);
   ob.back.classList.toggle('hidden', obIndex === 0);
-  ob.next.textContent = obIndex === steps.length - 1 ? 'Terminer' : 'Suivant';
+  ob.next.textContent = t(obIndex === list.length - 1 ? 'finish' : 'next');
 }
 
 function openOnboarding(index = 0) {
@@ -621,7 +681,7 @@ function closeOnboarding() {
 }
 
 ob.next.addEventListener('click', () => {
-  if (obIndex >= steps.length - 1) return closeOnboarding();
+  if (obIndex >= steps().length - 1) return closeOnboarding();
   obIndex++; renderStep();
 });
 ob.back.addEventListener('click', () => { if (obIndex > 0) { obIndex--; renderStep(); } });
@@ -629,24 +689,41 @@ ob.skip.addEventListener('click', closeOnboarding);
 els.openTuto.addEventListener('click', (e) => {
   e.preventDefault();
   // Jump to the "Connect Discord" step by key — its index shifts by platform.
-  openOnboarding(Math.max(0, steps.findIndex((s) => s.key === 'discord')));
+  openOnboarding(Math.max(0, steps().findIndex((s) => s.key === 'discord')));
 });
 els.replayTuto.addEventListener('click', (e) => { e.preventDefault(); openOnboarding(0); });
+
+// Switch the UI language live and save the choice (main re-labels the tray).
+async function setLanguage(lang) {
+  if (lang === LANG || !I18N[lang]) return;
+  LANG = lang;
+  cfg.language = lang;
+  applyStaticI18n();
+  render();
+  if (lastStatus) setStatus(lastStatus);
+  if (IS_MAC) refreshPermissions();
+  if (!ob.overlay.hidden) renderStep();
+  await persist();
+}
+
+$('lang-seg').addEventListener('click', (e) => {
+  const l = e.target.dataset.lang;
+  if (l) void setLanguage(l);
+});
 
 // ---- Init ----
 async function init() {
   const brand = await window.hush.getBrand();
   els.name.textContent = brand.name;
-  els.tagline.textContent = brand.tagline;
   document.title = brand.name;
+  try { LANG = await window.hush.getLanguage(); } catch { LANG = 'en'; }
+  applyStaticI18n();
   try { els.appVersion.textContent = `Hush ${await window.hush.getVersion()}`; } catch { /* noop */ }
   cfg = await window.hush.getConfig();
   render();
   wireRoleControls(els);
   if (cfg.role === 'host') refreshHostAddrs(els);
   // macOS-only permission panel: poll it live on Mac; hide it entirely elsewhere.
-  const captureHint = document.getElementById('capture-hint');
-  if (captureHint && !IS_MAC) captureHint.textContent = CAPTURE_HINT;
   const permCard = document.getElementById('perm-card');
   if (IS_MAC) {
     refreshPermissions();

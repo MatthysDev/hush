@@ -27,6 +27,8 @@ function migrate(raw: Record<string, unknown>): HushConfig {
     // New: launch-at-login. Old configs predate it → default to true (start
     // with the machine), matching DEFAULT_CONFIG.
     launchAtLogin: (raw.launchAtLogin as boolean) ?? DEFAULT_CONFIG.launchAtLogin,
+    // New: UI language. Absent → follow the system language.
+    ...(raw.language === 'en' || raw.language === 'fr' ? { language: raw.language } : {}),
   };
 }
 

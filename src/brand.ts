@@ -1,7 +1,6 @@
 export const BRAND = {
   name: 'Hush',
   tagline: 'Mute Discord while you dictate.',
-  taglineFr: 'Coupe Discord pendant que tu dictes.',
   appId: 'com.hush.app',
   colors: {
     bg: '#0F0F14',

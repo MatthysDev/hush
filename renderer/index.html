@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: file:; style-src 'self' 'unsafe-inline';" />
@@ -13,7 +13,7 @@
     <img class="logo" src="../assets/icon.svg" alt="Hush" />
     <div class="hero-text">
       <h1 id="brand-name">Hush</h1>
-      <p id="brand-tagline">Coupe Discord pendant que tu dictes.</p>
+      <p id="brand-tagline" data-i18n="tagline">Mute Discord while you dictate.</p>
     </div>
     <div class="status" id="status">
       <span class="dot" id="status-dot"></span>
@@ -26,9 +26,9 @@
     <section class="card">
       <div class="card-head">
         <h2>Discord</h2>
-        <span id="rpc-state" class="pill pill-off">Non connecté</span>
+        <span id="rpc-state" class="pill pill-off" data-i18n="notConnected">Not connected</span>
       </div>
-      <p class="muted">Hush coupe ton micro Discord par le socket local (RPC) — aucune touche simulée. Colle les identifiants de ton app Discord.</p>
+      <p class="muted" data-i18n="discordIntro"></p>
 
       <div class="field">
         <label for="rpc-id">Client ID</label>
@@ -39,52 +39,52 @@
         <input id="rpc-secret" type="password" spellcheck="false" autocomplete="off" placeholder="••••••••••••••••••••••••" />
       </div>
       <div class="row-actions">
-        <button class="ghost" id="rpc-reconnect">Connecter</button>
-        <a class="link" id="open-tuto" href="#">Comment obtenir ça ?</a>
+        <button class="ghost" id="rpc-reconnect" data-i18n="connect">Connect</button>
+        <a class="link" id="open-tuto" href="#" data-i18n="howToGet">How do I get these?</a>
       </div>
       <p class="err" id="rpc-error" hidden></p>
     </section>
 
     <!-- Cross-machine role -->
     <section class="card" id="role-card">
-      <h2>Où est Discord ?</h2>
-      <p class="muted">Sur cette machine, ou sur un autre PC (setup double PC) — Hush le coupe dans les deux cas.</p>
-      <div class="callout">💡 <strong>Setup double PC ?</strong> Tu dictes sur ce Mac mais Discord tourne sur ton autre PC ? Installe Hush <strong>sur les deux</strong> : le PC qui a Discord devient l'<strong>hôte</strong>, celui où tu dictes devient le <strong>contrôleur</strong>. Les deux doivent être sur le <strong>même réseau (Wi-Fi/box)</strong>.</div>
+      <h2 data-i18n="whereTitle">Where is Discord?</h2>
+      <p class="muted" data-i18n="whereIntro"></p>
+      <div class="callout" data-i18n="twoPcCallout"></div>
 
       <div class="binding">
-        <div class="binding-label"><strong>Emplacement de Discord</strong></div>
+        <div class="binding-label"><strong data-i18n="discordLocation">Discord location</strong></div>
         <div class="segment" id="role-seg">
-          <button type="button" data-role="local" class="active">Cette machine</button>
-          <button type="button" data-role="controller">Autre machine</button>
+          <button type="button" data-role="local" class="active" data-i18n="thisComputer">This computer</button>
+          <button type="button" data-role="controller" data-i18n="anotherComputer">Another computer</button>
         </div>
       </div>
 
       <div id="controller-panel" hidden>
-        <p class="hint">Ce Mac va commander le Discord de l'autre PC. Trois étapes :</p>
+        <p class="hint" data-i18n="controllerIntro"></p>
         <ol>
-          <li>Sur le PC qui a Discord : ouvre Hush, coche <strong>« Cette machine héberge Discord »</strong> → il affiche son <strong>IP</strong> et un <strong>code d'appairage</strong>.</li>
-          <li>Ici, choisis l'hôte trouvé (ou saisis son IP) et recopie le code.</li>
-          <li><strong>Connecter</strong>. Ensuite, tiens ton raccourci : le Discord de l'autre PC se coupe.</li>
+          <li data-i18n="controllerStep1"></li>
+          <li data-i18n="controllerStep2"></li>
+          <li data-i18n="controllerStep3"></li>
         </ol>
         <div class="row-actions">
-          <button class="ghost" id="discover-btn" type="button">Rechercher les hôtes…</button>
+          <button class="ghost" id="discover-btn" type="button" data-i18n="findHosts">Find hosts…</button>
         </div>
         <ul id="host-list"></ul>
         <div class="field">
-          <label for="remote-host">Adresse (IP) du PC hôte</label>
+          <label for="remote-host" data-i18n="hostIpLabel">Host computer's IP address</label>
           <input id="remote-host" type="text" spellcheck="false" autocomplete="off" placeholder="192.168.1.20" />
         </div>
         <div class="field">
-          <label for="remote-port">Port</label>
+          <label for="remote-port" data-i18n="port">Port</label>
           <input id="remote-port" type="number" value="8698" />
         </div>
         <div class="field">
-          <label for="remote-code">Code d'appairage</label>
+          <label for="remote-code" data-i18n="pairingCode">Pairing code</label>
           <input id="remote-code" type="text" spellcheck="false" autocomplete="off" placeholder="ABC123" />
         </div>
         <div class="row-actions">
-          <button class="primary" id="remote-connect" type="button">Connecter</button>
-          <span id="remote-status" class="pill pill-off">Non connecté</span>
+          <button class="primary" id="remote-connect" type="button" data-i18n="connect">Connect</button>
+          <span id="remote-status" class="pill pill-off" data-i18n="notConnected">Not connected</span>
         </div>
         <p class="hint" id="remote-help" hidden></p>
       </div>
@@ -92,59 +92,59 @@
       <hr />
 
       <div class="perm-row">
-        <span><strong>Cette machine héberge Discord</strong> <span class="muted">— pour une autre machine</span></span>
+        <span data-i18n="hostsDiscord"></span>
         <input type="checkbox" id="host-toggle" />
       </div>
       <div id="host-panel" hidden>
-        <p class="hint">Ce PC va relayer les ordres du contrôleur vers son Discord local. Deux choses :</p>
+        <p class="hint" data-i18n="hostIntro"></p>
         <ol>
-          <li>Connecte Discord ci-dessus (section <strong>Discord</strong>) comme d'habitude.</li>
-          <li>Recopie l'<strong>adresse</strong> et le <strong>code</strong> ci-dessous sur l'autre machine, puis <strong>laisse Hush ouvert</strong> ici.</li>
+          <li data-i18n="hostStep1"></li>
+          <li data-i18n="hostStep2"></li>
         </ol>
-        <p class="muted">Adresse(s) : <strong id="host-addrs">—</strong></p>
+        <p class="muted"><span data-i18n="addresses">Address(es):</span> <strong id="host-addrs">—</strong></p>
         <div class="field">
-          <label for="host-port">Port</label>
+          <label for="host-port" data-i18n="port">Port</label>
           <input id="host-port" type="number" value="8698" />
         </div>
         <div class="field">
-          <label for="host-code">Code d'appairage</label>
+          <label for="host-code" data-i18n="pairingCode">Pairing code</label>
           <input id="host-code" type="text" readonly />
         </div>
         <div class="row-actions">
-          <button class="ghost" id="regen-code-btn" type="button">Régénérer le code</button>
+          <button class="ghost" id="regen-code-btn" type="button" data-i18n="regenCode">Generate new code</button>
         </div>
       </div>
     </section>
 
     <!-- Permissions -->
     <section class="card" id="perm-card">
-      <h2>Permissions macOS</h2>
-      <p class="muted">Hush écoute ton raccourci au niveau du système pour couper Discord pile au bon moment.</p>
+      <h2 data-i18n="permTitle">macOS permissions</h2>
+      <p class="muted" data-i18n="permIntro"></p>
       <div class="perm-row">
-        <span id="acc-state" class="pill pill-warn">Accessibilité : à activer</span>
-        <button class="ghost" id="open-acc">Ouvrir</button>
+        <span id="acc-state" class="pill pill-warn"></span>
+        <button class="ghost" id="open-acc" data-i18n="open">Open</button>
       </div>
       <div class="perm-row">
-        <span id="input-state" class="pill pill-warn">Surveillance de la saisie : à activer</span>
-        <button class="ghost" id="open-input">Ouvrir</button>
+        <span id="input-state" class="pill pill-warn"></span>
+        <button class="ghost" id="open-input" data-i18n="open">Open</button>
       </div>
-      <div id="perm-drag" class="perm-drag" hidden draggable="true" title="Glisse-moi dans la liste">
+      <div id="perm-drag" class="perm-drag" hidden draggable="true" data-i18n-title="dragTitle">
         <img src="../assets/generated/icon-256.png" alt="" width="40" height="40" />
         <div class="perm-drag-txt">
-          <strong>Ou glisse Hush directement dans la liste</strong>
-          <span class="muted">Clique « Ouvrir » ci-dessus, puis fais-moi glisser dans la liste Accessibilité ou Surveillance de la saisie — et coche-moi.</span>
+          <strong data-i18n="dragHeading"></strong>
+          <span class="muted" data-i18n="dragBody"></span>
         </div>
       </div>
     </section>
 
     <!-- Shortcut -->
     <section class="card">
-      <h2>Ton raccourci</h2>
-      <p class="muted">Mets ici <strong>exactement</strong> le même push-to-talk que dans Wispr Flow. Tu le presses toi-même (Wispr dicte), Hush coupe Discord tant que tu le tiens.</p>
+      <h2 data-i18n="shortcutTitle">Your shortcut</h2>
+      <p class="muted" data-i18n="shortcutIntro"></p>
       <div class="binding">
         <div class="binding-label">
           <strong>Push-to-talk</strong>
-          <span class="muted">identique à Wispr → Réglages → Raccourcis</span>
+          <span class="muted" data-i18n="pttHint"></span>
         </div>
         <button class="capture" data-field="shortcut" id="cap-shortcut">⌃⌥</button>
       </div>
@@ -152,49 +152,56 @@
 
     <!-- Behaviour -->
     <section class="card">
-      <h2>Comportement</h2>
+      <h2 data-i18n="behaviorTitle">Behavior</h2>
       <div class="binding">
         <div class="binding-label">
           <strong>Mode</strong>
-          <span class="muted"><strong>Auto</strong> (recommandé) détecte tout seul : tu tiens → push-to-talk ; tu double-tapes → mains-libres (reste muet), un tap pour finir. Comme Wispr.</span>
+          <span class="muted" data-i18n="modeHint"></span>
         </div>
         <div class="segment" id="mode-seg">
           <button data-mode="auto" class="active">Auto</button>
-          <button data-mode="hold">Maintenir</button>
-          <button data-mode="toggle">Bascule</button>
+          <button data-mode="hold" data-i18n="modeHold">Hold</button>
+          <button data-mode="toggle" data-i18n="modeToggle">Toggle</button>
         </div>
       </div>
       <div class="binding">
         <div class="binding-label">
-          <strong>Délai avant unmute</strong>
+          <strong data-i18n="delayLabel">Delay before unmuting</strong>
           <span class="muted"><span id="delay-val">0</span> ms</span>
         </div>
         <input type="range" id="delay" min="0" max="500" step="50" value="0" />
       </div>
       <div class="perm-row">
-        <span><strong>Lancer au démarrage</strong> <span class="muted">— Hush s'ouvre avec le PC</span></span>
+        <span data-i18n="launchAtLogin"></span>
         <input type="checkbox" id="launch-at-login" />
+      </div>
+      <div class="binding">
+        <div class="binding-label"><strong data-i18n="language">Language</strong></div>
+        <div class="segment" id="lang-seg">
+          <button type="button" data-lang="en">English</button>
+          <button type="button" data-lang="fr">Français</button>
+        </div>
       </div>
     </section>
 
     <p class="err" id="err"></p>
 
     <div class="update-banner" id="update-banner" hidden>
-      <span id="update-text">Nouvelle version disponible</span>
-      <button class="primary" id="update-download" type="button">Télécharger</button>
+      <span id="update-text"></span>
+      <button class="primary" id="update-download" type="button" data-i18n="download">Download</button>
     </div>
 
     <div class="actions">
       <div class="row-actions">
-        <button class="quit" id="quit">Quitter</button>
-        <a class="link" id="replay-tuto" href="#">Revoir le tuto</a>
+        <button class="quit" id="quit" data-i18n="quit">Quit</button>
+        <a class="link" id="replay-tuto" href="#" data-i18n="replayTuto">Replay the setup guide</a>
       </div>
-      <button class="primary" id="save">Enregistrer</button>
+      <button class="primary" id="save" data-i18n="save">Save</button>
     </div>
 
     <p class="version" id="app-version"></p>
 
-    <p class="hint" id="capture-hint">Capturer un raccourci : clique le bouton, presse ta touche. Pour des <em>modificateurs seuls</em> (ex. <em>⌃⌥</em>) maintiens-les puis relâche. La touche <em>Fn (🌐)</em> est supportée — le défaut de Wispr. Échap = annuler.</p>
+    <p class="hint" id="capture-hint"></p>
   </main>
 
   <!-- Onboarding tutorial -->
@@ -205,16 +212,17 @@
       <p class="err" id="ob-err" hidden></p>
       <div class="modal-actions">
         <div class="left">
-          <button class="skip" id="ob-skip">Passer</button>
+          <button class="skip" id="ob-skip" data-i18n="skip">Skip</button>
         </div>
         <div class="row-actions">
-          <button class="ghost hidden" id="ob-back">Retour</button>
-          <button class="primary" id="ob-next">Suivant</button>
+          <button class="ghost hidden" id="ob-back" data-i18n="back">Back</button>
+          <button class="primary" id="ob-next" data-i18n="next">Next</button>
         </div>
       </div>
     </div>
   </div>
 
+  <script src="i18n.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

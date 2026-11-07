@@ -1,3 +1,5 @@
+import type { Language } from './i18n';
+
 export type Mod = 'ctrl' | 'alt' | 'cmd' | 'shift';
 export type Combo = { mods: Mod[]; key: string };
 // auto: detects the gesture automatically, mirroring Wispr — HOLD = push-to-talk
@@ -73,4 +75,6 @@ export interface HushConfig {
   // Launch Hush automatically when you log in to the machine. Applied via
   // app.setLoginItemSettings; persisted so the choice survives restarts.
   launchAtLogin: boolean;
+  // UI language. Unset means "follow the system language" (see i18n.ts).
+  language?: Language;
 }
