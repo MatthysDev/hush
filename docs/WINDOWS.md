@@ -1,79 +1,69 @@
-# Porting Hush to Windows
+# Hush on Windows
 
-Hush is macOS-only today, but most of the hard parts are already
-cross-platform. This is the concrete checklist to finish a Windows build.
+Hush runs on Windows from the same codebase as macOS. This page covers what is
+platform-specific and how to build and verify the Windows installer.
 
-## What already works on Windows (no change)
+## What's shared
 
-- **Electron** — same runtime on both platforms.
-- **`uiohook-napi`** — global keyboard listener; ships prebuilt Windows binaries
-  and needs **no special permission** on Windows (unlike macOS TCC).
-- **`discord-rpc`** — the Discord RPC/IPC socket works identically on Windows.
-- **The whole core**: `orchestrator.ts`, `discord-mute.ts`, `input-engine.ts`,
-  `combo.ts`, `config.ts`, `store.ts` — pure logic, no macOS APIs. These run as-is.
-- **A Windows `.ico`** is already generated (`assets/icon.ico`, via `gen-icons.sh`)
-  and wired into `package.json` → `build.win`.
+- **Electron**, **`uiohook-napi`** (global keyboard listener, no permission
+  needed on Windows) and **`discord-rpc`** (Discord's local IPC socket) behave the
+  same on both platforms.
+- **The whole core** (`orchestrator.ts`, `gesture.ts`, `discord-mute.ts`,
+  `input-engine.ts`, `config.ts`, `store.ts`, the LAN link) has no macOS APIs.
+- **Auto mode** (hold = push-to-talk, double-tap = hands-free, tap = stop) works
+  identically, since it only depends on press/release events.
 
-## What must change
+## What differs on Windows
 
-### 1. Permissions (`src/main.ts`)
-Windows has **no** Accessibility / Input Monitoring TCC prompts — global hooks
-just work. The macOS-only code is already guarded (`process.platform === 'darwin'`
-around the prompts, and `permStatus()` returns `{accessibility:true,
-inputMonitoring:true}` off-darwin), so nothing crashes. Two cleanups:
-- Hide the **Permissions** card in the settings window on Windows (it's
-  irrelevant). Gate it on a `platform` value exposed through the preload bridge.
-- The `perm:open-accessibility` / `perm:open-input` IPC handlers open
-  `x-apple.systempreferences:` URLs — no-ops on Windows, but the buttons should be
-  hidden anyway per the point above.
+| Area | macOS | Windows |
+| ---- | ----- | ------- |
+| Default shortcut | `⌃⌥` | `Ctrl + Win` (Wispr Flow's Windows default) |
+| Shortcut labels | Glyphs (`⌃⌥⌘⇧`) | Spelled out (`Ctrl + Alt + Win + Shift`); the Win key is stored as the `cmd` modifier |
+| Fn / Globe key | Polled via CoreGraphics | Not applicable (no-op) |
+| Permissions | Input Monitoring + Accessibility (TCC) | None; the Permissions card and onboarding step are hidden |
+| Tray icon | Template image (auto-tinted by the menu bar) | Template recolored at runtime: white/dark to match the taskbar theme (read from the registry), mint while Discord is muted |
+| App menu | Custom macOS menu (Edit roles enable ⌘C/⌘V) | Removed from the settings window; clipboard shortcuts work natively |
+| Debug log | `~/Library/Logs/Hush/hush-debug.log` | `%APPDATA%\Hush\logs\hush-debug.log` |
+| Launch at login | Login Items | `HKCU\...\Run` entry with `--hidden` (registered by the installed app only, never by dev runs) |
 
-### 2. `node-mac-permissions` (`src/main.ts`)
-The `require('@nut-tree-fork/node-mac-permissions')` is already wrapped in
-try/catch and falls back to `null` on Windows — safe. It's a macOS-only native
-module; keep it out of the Windows bundle via electron-builder's `files`/`asar`
-handling (it simply won't load).
+Enable debug logging with `HUSH_DEBUG=1` or by creating an empty `.hush-debug`
+file in your home folder.
 
-### 3. Menu-bar / tray (`src/main.ts`)
-- `Tray` works on Windows, but `img.setTemplateImage(true)` is macOS-only styling.
-  On Windows, use a normal colored icon (e.g. `assets/icon.ico` or a small PNG),
-  not the monochrome `*Template.png` masks.
-- `app.dock?.hide()` is macOS-only; `?.` already makes it a no-op on Windows.
-- `LSUIElement` (hide from Dock) is macOS-only; on Windows there is no Dock, so a
-  tray-only app is the default — nothing to do, but note it launches with no
-  window by design.
-
-### 4. Autostart (optional, nice-to-have)
-macOS uses Login Items; Windows uses `app.setLoginItemSettings({ openAtLogin })`
-which works on both — add a toggle if you want launch-on-boot.
-
-### 5. Packaging (`package.json`)
-- `build.win` is already set (`nsis` target, `assets/icon.ico`,
-  `Hush-${version}-Setup.exe`). Build with `npm run dist:win`.
-- **You must build on Windows** (or CI with a Windows runner) — the `uiohook-napi`
-  and any native deps need the Windows prebuilds; you can't cross-compile the
-  installer from macOS reliably.
-- Add a Windows job to `.github/workflows/release.yml` (a `runs-on:
-  windows-latest` matrix leg) to produce the `.exe` alongside the macOS `.dmg`.
-- Code signing: Windows SmartScreen will warn on an unsigned `.exe`, same story as
-  macOS notarization. Ship unsigned (users click "More info → Run anyway") or buy
-  an Authenticode cert.
-
-## Build & test
+## Build
 
 ```bash
-# on a Windows machine (or windows-latest CI):
+# on Windows (or the windows-latest leg of .github/workflows/release.yml):
 npm ci
-npm run dist:win     # → release/Hush-0.1.0-Setup.exe
+npm run dist:win     # → release/Hush-Setup.exe
 ```
 
-Then verify on real Windows hardware:
-1. Install, confirm the tray icon appears and the settings window opens.
-2. Set a shortcut, hold it, confirm the Discord mic mutes and unmutes.
-3. Confirm the Discord RPC connects (Client ID/Secret + `http://localhost`
-   redirect — same setup as macOS).
+Native deps need their Windows prebuilds, so build on Windows; don't
+cross-compile from macOS.
 
-## Not portable
+**Local build fails with "Cannot create symbolic link : A required privilege is
+not held by the client"?** electron-builder unpacks its `winCodeSign` tool bundle,
+which contains macOS symlinks that Windows can only create with Developer Mode on
+or from an admin shell. Either enable Developer Mode, or pre-extract the bundle
+without the macOS part (from the repo root):
 
-- **Wispr Flow** must exist on the target OS for the bridge to be useful. If Wispr
-  isn't available on Windows, Hush still mutes Discord for any push-to-talk
-  shortcut, but there's no dictation app to pair with.
+```bash
+cd "$LOCALAPPDATA/electron-builder/Cache/winCodeSign"
+"$OLDPWD/node_modules/7zip-bin/win/x64/7za.exe" x -bd <the-downloaded>.7z -owinCodeSign-2.6.0 '-xr!darwin'
+```
+
+GitHub's `windows-latest` runners don't hit this.
+
+The installer is unsigned: SmartScreen warns once ("More info → Run anyway")
+unless you sign it with an Authenticode certificate.
+
+## Verify on real hardware
+
+1. Install, confirm the tray icon appears (it may land in the `^` overflow) and
+   the settings window opens.
+2. Connect Discord (Client ID/Secret + `http://localhost` redirect, same as macOS).
+   Use the official Discord desktop app; third-party clients like Vesktop don't
+   expose the RPC socket.
+3. With the debug log on, check each gesture against Wispr Flow:
+   - hold → muted while held;
+   - double-tap → stays muted after release (`gesture: double-tap → hands-free on`);
+   - single tap → unmuted (`gesture: tap → hands-free off`).
