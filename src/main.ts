@@ -12,6 +12,7 @@ import { FnInputEngine } from './fn-input';
 import { fnAvailable, isFnDown } from './fn-key';
 import { dbg, LOG_FILE } from './debug';
 import { Orchestrator } from './orchestrator';
+import { releaseBeforeQuit } from './quit-release';
 import { DiscordRpcMuter } from './discord-mute';
 import {
   UiohookInputEngine,
@@ -757,8 +758,19 @@ if (!app.requestSingleInstanceLock()) {
     }));
   });
 
-  // Watchdog: never leave Discord muted on quit/crash.
-  app.on('before-quit', cleanup);
+  // Watchdog: never leave Discord muted on quit/crash. The unmute is an async
+  // RPC/LAN call, so if Hush is holding a mute (e.g. hands-free latched), hold
+  // the quit until it has actually been sent (bounded), then quit for real.
+  let releasedForQuit = false;
+  app.on('before-quit', (e) => {
+    if (releasedForQuit || !orchestrator?.isActive()) { cleanup(); return; }
+    e.preventDefault();
+    releasedForQuit = true;
+    void releaseBeforeQuit(orchestrator).finally(() => {
+      cleanup();
+      app.quit();
+    });
+  });
   process.on('SIGINT', () => { cleanup(); app.quit(); });
   process.on('uncaughtException', () => { cleanup(); });
 
