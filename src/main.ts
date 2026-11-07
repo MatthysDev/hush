@@ -1,6 +1,7 @@
-import { app, Tray, Menu, BrowserWindow, nativeImage, ipcMain, shell, systemPreferences, powerMonitor, MenuItemConstructorOptions } from 'electron';
+import { app, Tray, Menu, BrowserWindow, nativeImage, nativeTheme, ipcMain, shell, systemPreferences, powerMonitor, MenuItemConstructorOptions, NativeImage } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
+import { execFileSync } from 'child_process';
 import { uIOhook } from 'uiohook-napi';
 import { BRAND } from './brand';
 import { Combo, DiscordMuter, HushConfig, InputEngine, Mod } from './types';
@@ -11,6 +12,8 @@ import { FnInputEngine } from './fn-input';
 import { fnAvailable, isFnDown } from './fn-key';
 import { dbg, LOG_FILE } from './debug';
 import { Orchestrator } from './orchestrator';
+import { releaseBeforeQuit } from './quit-release';
+import { resolveLanguage, TRAY, TrayStrings } from './i18n';
 import { DiscordRpcMuter } from './discord-mute';
 import {
   UiohookInputEngine,
@@ -87,10 +90,58 @@ let latestUpdate: UpdateInfo | null = null;
 let updateTimer: ReturnType<typeof setInterval> | null = null;
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
+const IS_MAC = process.platform === 'darwin';
+
+// Windows' taskbar follows the "system" theme, which is independent of the app
+// theme nativeTheme reports — read it from the registry (0 = dark taskbar).
+// Cached; refreshed when nativeTheme signals a theme change.
+let darkTaskbar = true;
+function readTaskbarTheme(): void {
+  if (process.platform !== 'win32') return;
+  try {
+    const out = execFileSync('reg', [
+      'query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize',
+      '/v', 'SystemUsesLightTheme',
+    ], { encoding: 'utf8', windowsHide: true });
+    darkTaskbar = !/SystemUsesLightTheme\s+REG_DWORD\s+0x1\b/.test(out);
+  } catch { darkTaskbar = true; } // key absent on older builds → dark taskbar
+}
+
+// Repaint a black-on-transparent template image in a solid color, keeping its
+// alpha. Each scale factor (1x, 2x) is recolored so the icon stays crisp on HiDPI.
+function tint(src: NativeImage, hex: string): NativeImage {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const out = nativeImage.createEmpty();
+  for (const scaleFactor of src.getScaleFactors()) {
+    // getSize() is in DIPs at every scale; the bitmap is DIPs × scaleFactor pixels.
+    const dip = src.getSize(scaleFactor);
+    const width = Math.round(dip.width * scaleFactor);
+    const height = Math.round(dip.height * scaleFactor);
+    const px = Buffer.from(src.toBitmap({ scaleFactor })); // BGRA, premultiplied
+    for (let i = 0; i < px.length; i += 4) {
+      const a = px[i + 3];
+      px[i] = Math.round((b * a) / 255);
+      px[i + 1] = Math.round((g * a) / 255);
+      px[i + 2] = Math.round((r * a) / 255);
+    }
+    out.addRepresentation({ scaleFactor, width, height, buffer: px });
+  }
+  return out;
+}
+
 function trayImage(name: 'trayIdleTemplate' | 'trayActiveTemplate') {
   const img = nativeImage.createFromPath(path.join(ASSETS, `${name}.png`));
-  img.setTemplateImage(true);
-  return img;
+  if (IS_MAC) {
+    // macOS menu bar: template images are auto-tinted for light/dark.
+    img.setTemplateImage(true);
+    return img;
+  }
+  // Windows has no template images: tint to contrast with the taskbar, and show
+  // the muted state in the brand's "safe" color so it reads at a glance.
+  if (name === 'trayActiveTemplate') return tint(img, BRAND.colors.safe);
+  return tint(img, darkTaskbar ? '#FFFFFF' : '#1A1A22');
 }
 
 // Best-effort check for a newer upstream release. Updates latestUpdate and, when
@@ -120,8 +171,14 @@ function pushStatus() {
   refreshAppMenu();
 }
 
+// UI language: the saved choice, else the system language (see i18n.ts).
+function lang(): TrayStrings {
+  return TRAY[resolveLanguage(cfg.language, app.getLocale())];
+}
+
 function rpcLabel(state: 'disconnected' | 'connecting' | 'connected'): string {
-  return state === 'connected' ? 'connecté ✓' : state === 'connecting' ? 'connexion…' : 'non connecté';
+  const s = lang();
+  return state === 'connected' ? s.connected : state === 'connecting' ? s.connecting : s.notConnected;
 }
 
 // The two "where is Discord" radio items, shared by the tray menu and the macOS
@@ -129,13 +186,13 @@ function rpcLabel(state: 'disconnected' | 'connecting' | 'connected'): string {
 function discordLocationMenuItems(): MenuItemConstructorOptions[] {
   return [
     {
-      label: 'Cette machine',
+      label: lang().thisComputer,
       type: 'radio',
       checked: cfg.role === 'local',
       click: () => switchDiscordLocation('local'),
     },
     {
-      label: cfg.remote.host ? `Autre machine — ${cfg.remote.host}` : 'Autre machine…',
+      label: cfg.remote.host ? `${lang().anotherComputer} — ${cfg.remote.host}` : lang().anotherComputerEllipsis,
       type: 'radio',
       checked: cfg.role === 'controller',
       click: () => switchDiscordLocation('controller'),
@@ -145,38 +202,40 @@ function discordLocationMenuItems(): MenuItemConstructorOptions[] {
 
 // Human label for the mute mode, including upstream's 'auto' (mirror Wispr).
 function modeLabel(mode: HushConfig['mode']): string {
-  return mode === 'auto' ? 'Auto' : mode === 'hold' ? 'Maintenir' : 'Bascule';
+  return mode === 'auto' ? 'Auto' : mode === 'hold' ? lang().modeHold : lang().modeToggle;
 }
 
 function refreshTrayMenu() {
   if (!tray) return;
+  const s = lang();
+  tray.setToolTip(`${BRAND.name} — ${s.tagline}`);
   const status = !engineReady
-    ? '⚠︎ Permissions requises'
+    ? (IS_MAC ? s.statusPerms : s.statusListenerFailed)
     : active
-      ? '● Micro coupé — dictée en cours'
-      : '○ Prêt';
+      ? s.statusMuted
+      : s.statusReady;
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: `${BRAND.name} — ${status}`, enabled: false },
       { type: 'separator' },
-      { label: `Raccourci : ${comboLabel(cfg.shortcut)}`, enabled: false },
-      { label: `Mode : ${modeLabel(cfg.mode)}`, enabled: false },
-      { label: `Discord : ${rpcLabel(discord.getState())}`, enabled: false },
+      { label: `${s.shortcut}${comboLabel(cfg.shortcut)}`, enabled: false },
+      { label: `${s.mode}${modeLabel(cfg.mode)}`, enabled: false },
+      { label: `${s.discord}${rpcLabel(discord.getState())}`, enabled: false },
       { type: 'separator' },
-      { label: 'Emplacement de Discord', enabled: false },
+      { label: s.discordLocation, enabled: false },
       ...discordLocationMenuItems(),
       ...(latestUpdate
         ? [
             { type: 'separator' as const },
             {
-              label: `⬆︎ Nouvelle version ${latestUpdate.version} — Télécharger`,
+              label: s.updateDownload.replace('{version}', latestUpdate.version),
               click: () => { const u = latestUpdate; if (u) void shell.openExternal(u.url); },
             },
           ]
         : []),
       { type: 'separator' },
-      { label: 'Réglages…', click: showWindow },
-      { label: 'Quitter Hush', click: () => app.quit() },
+      { label: s.settings, click: showWindow },
+      { label: s.quitHush, click: () => app.quit() },
     ]),
   );
 }
@@ -187,7 +246,8 @@ function refreshTrayMenu() {
 // fields — needed to paste the Discord Client ID / Secret.
 function refreshAppMenu(): void {
   if (process.platform !== 'darwin') return;
-  const sig = `${cfg.role}|${cfg.remote.host}`;
+  const s = lang();
+  const sig = `${cfg.role}|${cfg.remote.host}|${s.quit}`;
   if (sig === lastAppMenuSig) return;
   lastAppMenuSig = sig;
   Menu.setApplicationMenu(
@@ -195,21 +255,21 @@ function refreshAppMenu(): void {
       {
         label: BRAND.name,
         submenu: [
-          { role: 'about', label: `À propos de ${BRAND.name}` },
+          { role: 'about', label: `${s.about} ${BRAND.name}` },
           { type: 'separator' },
-          { role: 'quit', label: `Quitter ${BRAND.name}` },
+          { role: 'quit', label: `${s.quit} ${BRAND.name}` },
         ],
       },
       {
-        label: 'Édition',
+        label: s.edit,
         submenu: [
-          { role: 'undo', label: 'Annuler' },
-          { role: 'redo', label: 'Rétablir' },
+          { role: 'undo', label: s.undo },
+          { role: 'redo', label: s.redo },
           { type: 'separator' },
-          { role: 'cut', label: 'Couper' },
-          { role: 'copy', label: 'Copier' },
-          { role: 'paste', label: 'Coller' },
-          { role: 'selectAll', label: 'Tout sélectionner' },
+          { role: 'cut', label: s.cut },
+          { role: 'copy', label: s.copy },
+          { role: 'paste', label: s.paste },
+          { role: 'selectAll', label: s.selectAll },
         ],
       },
       {
@@ -217,7 +277,7 @@ function refreshAppMenu(): void {
         submenu: [
           ...discordLocationMenuItems(),
           { type: 'separator' },
-          { label: 'Réglages…', click: showWindow },
+          { label: s.settings, click: showWindow },
         ],
       },
     ]),
@@ -228,6 +288,9 @@ function refreshAppMenu(): void {
 // safe to call on every launch and on every settings save. openAsHidden keeps
 // macOS from flashing a window for this menu-bar app; it's ignored on Windows.
 function applyLaunchAtLogin(next: HushConfig): void {
+  // Dev runs would register the bare Electron binary (no app path), which opens
+  // an empty Electron window at every login — only the installed app registers.
+  if (!app.isPackaged) return;
   try {
     // openAsHidden covers macOS; Windows ignores it, so we register a --hidden
     // arg on the login-item launch and detect it in wasAutoLaunched().
@@ -414,6 +477,8 @@ function showWindow() {
     fullscreenable: false,
     title: BRAND.name,
     titleBarStyle: 'hiddenInset',
+    // Packaged builds embed the .ico; this also covers dev runs on Windows.
+    ...(IS_MAC ? {} : { icon: path.join(ASSETS, 'icon.ico') }),
     backgroundColor: BRAND.colors.bg,
     show: false,
     webPreferences: {
@@ -422,6 +487,9 @@ function showWindow() {
       nodeIntegration: false,
     },
   });
+  // Windows/Linux would otherwise show Electron's default File/Edit/View menu bar.
+  // Clipboard shortcuts in the text fields still work without it off macOS.
+  if (!IS_MAC) win.removeMenu();
   win.loadFile(RENDERER);
   win.once('ready-to-show', () => {
     win?.show();
@@ -580,9 +648,11 @@ if (!app.requestSingleInstanceLock()) {
       }
     }
 
+    readTaskbarTheme();
     tray = new Tray(trayImage('trayIdleTemplate'));
-    tray.setToolTip(`${BRAND.name} — ${BRAND.taglineFr}`);
     tray.on('click', showWindow);
+    // Windows: re-tint the tray icon when the taskbar switches light/dark.
+    nativeTheme.on('updated', () => { readTaskbarTheme(); pushStatus(); });
 
     applyConfig(cfg);
     applyLaunchAtLogin(cfg); // honour the stored launch-at-login choice on boot
@@ -624,7 +694,8 @@ if (!app.requestSingleInstanceLock()) {
     // ---- IPC ----
     ipcMain.handle('config:get', () => cfg);
     ipcMain.handle('app:version', () => app.getVersion());
-    ipcMain.handle('brand:get', () => ({ name: BRAND.name, tagline: BRAND.taglineFr }));
+    ipcMain.handle('brand:get', () => ({ name: BRAND.name, tagline: lang().tagline }));
+    ipcMain.handle('app:language', () => resolveLanguage(cfg.language, app.getLocale()));
     ipcMain.handle('config:set', (_e, next: HushConfig) => {
       try {
         const prev = cfg; // note: cfg is reassigned inside applyConfig(saved)
@@ -697,8 +768,19 @@ if (!app.requestSingleInstanceLock()) {
     }));
   });
 
-  // Watchdog: never leave Discord muted on quit/crash.
-  app.on('before-quit', cleanup);
+  // Watchdog: never leave Discord muted on quit/crash. The unmute is an async
+  // RPC/LAN call, so if Hush is holding a mute (e.g. hands-free latched), hold
+  // the quit until it has actually been sent (bounded), then quit for real.
+  let releasedForQuit = false;
+  app.on('before-quit', (e) => {
+    if (releasedForQuit || !orchestrator?.isActive()) { cleanup(); return; }
+    e.preventDefault();
+    releasedForQuit = true;
+    void releaseBeforeQuit(orchestrator).finally(() => {
+      cleanup();
+      app.quit();
+    });
+  });
   process.on('SIGINT', () => { cleanup(); app.quit(); });
   process.on('uncaughtException', () => { cleanup(); });
 

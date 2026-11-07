@@ -164,7 +164,7 @@ export class DiscordRpcMuter implements DiscordMuter {
   async connect(clientId: string, clientSecret: string, tokens?: ConnectTokens): Promise<boolean> {
     if (!clientId || !clientSecret) {
       this.state = 'disconnected';
-      this.lastError = 'client_id / client_secret manquants';
+      this.lastError = 'missing Client ID / Client Secret';
       return false;
     }
     // Claim this attempt's generation. Any earlier in-flight connect() (or a

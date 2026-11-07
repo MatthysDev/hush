@@ -13,7 +13,7 @@ describe('DiscordRpcMuter best-effort behaviour', () => {
     const ok = await m.connect('', '');
     expect(ok).toBe(false);
     expect(m.getState()).toBe('disconnected');
-    expect(m.getError()).toMatch(/manquant/);
+    expect(m.getError()).toMatch(/missing Client ID/);
   });
 
   it('setMute is a silent no-op when not connected (dictation must still proceed)', async () => {

@@ -15,7 +15,7 @@
 
 ---
 
-Hush is a tiny macOS menu-bar app. You already hold a push-to-talk shortcut to
+Hush is a tiny menu-bar / system-tray app for macOS and Windows. You already hold a push-to-talk shortcut to
 dictate with **Wispr Flow** — but on a Discord call, everyone hears you. Hush
 watches that **same shortcut** and **mutes your Discord mic** while it's held;
 release it and your mic comes back. No more broadcasting your dictation to a
@@ -24,10 +24,15 @@ whole call.
 - **Mutes Discord over RPC**, not a fake keystroke — the approach that actually works.
 - **One shortcut — the one you already use.** Hush never simulates keys: you press
   your Wispr shortcut yourself, Hush just mutes Discord alongside it.
-- **Menu-bar only** (`LSUIElement`), local & private, MIT-licensed.
-- **Modes** — `hold` (push-to-talk) or `toggle`.
+- **Menu-bar / tray only**, local & private, MIT-licensed.
+- **Modes** — `auto` (mirrors Wispr: hold = push-to-talk, double-tap = hands-free),
+  `hold` or `toggle`.
+- **English or French** — follows your system language; switch it on the first
+  step of the setup guide or under Behavior.
 
 ## Install
+
+**macOS**
 
 ```bash
 brew install --cask matthysdev/hush/hush
@@ -37,18 +42,24 @@ brew install --cask matthysdev/hush/hush
 > quarantine flag for you; if macOS still complains, right-click the app →
 > **Open**, or run `xattr -dr com.apple.quarantine /Applications/Hush.app`.
 
-You'll need **Discord** (desktop) and **Wispr Flow** for the full bridge.
+**Windows**
 
-> **Windows?** Not yet. The core (global key detection, Discord RPC) is portable,
-> but everything around it is macOS-specific today — TCC permissions, the menu-bar
-> integration, the `.dmg`/Homebrew packaging. A Windows port is possible but is a
-> separate piece of work.
+Download `Hush-Setup.exe` from the [latest release](https://github.com/MatthysDev/hush/releases)
+and run it. Hush lives in the system tray (it may start in the hidden-icons `^`
+overflow — drag it onto the taskbar to keep it visible).
+
+> ⚠️ The installer isn't code-signed, so SmartScreen may warn: click
+> **More info → Run anyway**.
+
+You'll need **Discord** (the official desktop app — third-party clients such as
+Vesktop don't expose the RPC socket) and **Wispr Flow** for the full bridge.
 
 ## Setup
 
-1. **Permission** — grant **Input Monitoring** (and Accessibility if prompted) so
-   Hush can see when your shortcut is held. The settings window links straight to
-   the right System Settings pane. That's the only thing Hush watches.
+1. **Permission (macOS only)** — grant **Input Monitoring** (and Accessibility if
+   prompted) so Hush can see when your shortcut is held. The settings window links
+   straight to the right System Settings pane. That's the only thing Hush watches.
+   Windows needs no permission.
 2. **Connect Discord** — Hush mutes Discord through its local RPC socket, which
    needs a free Discord app:
    - Go to <https://discord.com/developers/applications> → **New Application**.
@@ -151,9 +162,9 @@ Defaults live in `src/config.ts` and are persisted via `electron-store`:
 
 | Setting         | Default | Meaning                                              |
 | --------------- | ------- | ---------------------------------------------------- |
-| `shortcut`      | `⌃⌥`    | Your push-to-talk shortcut (same as in Wispr Flow)   |
+| `shortcut`      | `⌃⌥` (macOS) / `Ctrl + Win` (Windows) | Your push-to-talk shortcut (same as in Wispr Flow) |
 | `discordRpc`    | `{ }`   | Discord app Client ID & Secret (for RPC)             |
-| `mode`          | `hold`  | `hold` (push-to-talk) or `toggle`                    |
+| `mode`          | `auto`  | `auto` (hold + double-tap hands-free), `hold` or `toggle` |
 | `unmuteDelayMs` | `0`     | Delay before unmuting Discord on release             |
 
 ## Develop

@@ -16,6 +16,8 @@ const bridge = {
   openExternal: (url: string) => ipcRenderer.send('app:open-external', url),
   quit: () => ipcRenderer.send('app:quit'),
   getVersion: () => ipcRenderer.invoke('app:version'),
+  // Resolved UI language ('en' | 'fr'): the saved choice, else the system's.
+  getLanguage: () => ipcRenderer.invoke('app:language'),
   onStatus: (cb: (s: unknown) => void) => ipcRenderer.on('status', (_e, s) => cb(s)),
   onConfigUpdated: (cb: (cfg: unknown) => void) =>
     ipcRenderer.on('config-updated', (_e, cfg) => cb(cfg)),
