@@ -93,7 +93,9 @@ export class WisprGesture {
     this.pendingTimer = this.deps.setTimer(() => {
       this.pendingTimer = null;
       this.awaitingSecond = false;
-      if (!this.latched) this.deactivate(); // a lone tap just mutes briefly, then releases
+      if (this.latched) return;
+      dbg('gesture: lone tap (no second tap in time) → off');
+      this.deactivate(); // a lone tap just mutes briefly, then releases
     }, this.doubleTapMs);
   }
 

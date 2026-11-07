@@ -1,14 +1,32 @@
 'use strict';
 
+// macOS-only UI (TCC permissions, ⌃⌥ glyphs, the Fn key) is gated on this.
+const IS_MAC = !!(window.hush && window.hush.isMac);
+
 const MOD_ORDER = ['ctrl', 'alt', 'cmd', 'shift'];
 const MOD_SYMBOL = { ctrl: '⌃', alt: '⌥', cmd: '⌘', shift: '⇧' };
+// Off macOS the 'cmd' modifier is the Windows key.
+const MOD_NAME = { ctrl: 'Ctrl', alt: 'Alt', cmd: 'Win', shift: 'Shift' };
 
+// Mirrors comboLabel() in src/combo.ts: glyphs on macOS, spelled out elsewhere.
 function comboLabel(combo) {
   if (!combo) return '—';
-  const mods = MOD_ORDER.filter((m) => combo.mods.includes(m)).map((m) => MOD_SYMBOL[m]).join('');
-  if (!combo.key) return mods || '—';
-  return mods + combo.key.toUpperCase();
+  if (combo.mods.length === 0 && String(combo.key).toUpperCase() === 'FN') return '🌐 Fn';
+  const mods = MOD_ORDER.filter((m) => combo.mods.includes(m));
+  if (!IS_MAC) {
+    const parts = mods.map((m) => MOD_NAME[m]);
+    if (combo.key) parts.push(combo.key.toUpperCase());
+    return parts.join(' + ') || '—';
+  }
+  const glyphs = mods.map((m) => MOD_SYMBOL[m]).join('');
+  if (!combo.key) return glyphs || '—';
+  return glyphs + combo.key.toUpperCase();
 }
+
+// Capture hint, per platform (Fn only exists on Mac keyboards).
+const CAPTURE_HINT = IS_MAC
+  ? 'Clique puis presse ta touche. Modificateurs seuls (ex. ⌃⌥) : maintiens puis relâche. Fn (🌐) supportée. Échap = annuler.'
+  : 'Clique puis presse ta touche. Modificateurs seuls (ex. Ctrl + Win, le défaut de Wispr sur Windows) : maintiens puis relâche. Échap = annuler.';
 
 let cfg = null;
 let armedField = null;
@@ -134,9 +152,13 @@ async function captureInto(field, btnEl) {
     cfg[field] = res.combo;
     await persist();
   } else if (res.reason === 'unsupported') {
-    showError('Touche non gérée — utilise une lettre, un chiffre ou F1–F24 (avec ⌃⌥⌘⇧ en option).');
+    showError(IS_MAC
+      ? 'Touche non gérée — utilise une lettre, un chiffre ou F1–F24 (avec ⌃⌥⌘⇧ en option).'
+      : 'Touche non gérée — utilise une lettre, un chiffre ou F1–F24 (avec Ctrl/Alt/Win/Shift en option).');
   } else if (res.reason === 'timeout') {
-    showError('Rien capté. Active « Surveillance de la saisie » pour Hush, puis relance l\'app.');
+    showError(IS_MAC
+      ? 'Rien capté. Active « Surveillance de la saisie » pour Hush, puis relance l\'app.'
+      : 'Rien capté en 8 s — reclique et presse ton raccourci.');
   }
 
   btnEl.classList.remove('armed');
@@ -415,8 +437,6 @@ async function initPermDrag() {
 }
 
 // ---- Onboarding tutorial ----
-// macOS-only UI (TCC permissions) is meaningless on Windows/Linux — gate it.
-const IS_MAC = !!(window.hush && window.hush.isMac);
 const STEPS = [
   {
     glyph: '🤫',
@@ -477,7 +497,7 @@ const STEPS = [
         <div class="binding-label"><strong>Push-to-talk</strong><span class="muted">identique à Wispr → Raccourcis</span></div>
         <button class="capture" id="ob-cap-shortcut">⌃⌥</button>
       </div>
-      <p class="hint">Clique puis presse ta touche. Modificateurs seuls (ex. ⌃⌥) : maintiens puis relâche. Fn (🌐) supportée. Échap = annuler.</p>
+      <p class="hint">${CAPTURE_HINT}</p>
       <div class="binding">
         <div class="binding-label"><strong>Mode</strong><span class="muted">comme dans Wispr</span></div>
         <div class="segment" id="ob-mode-seg">
@@ -625,6 +645,8 @@ async function init() {
   wireRoleControls(els);
   if (cfg.role === 'host') refreshHostAddrs(els);
   // macOS-only permission panel: poll it live on Mac; hide it entirely elsewhere.
+  const captureHint = document.getElementById('capture-hint');
+  if (captureHint && !IS_MAC) captureHint.textContent = CAPTURE_HINT;
   const permCard = document.getElementById('perm-card');
   if (IS_MAC) {
     refreshPermissions();

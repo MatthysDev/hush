@@ -1,13 +1,18 @@
-import { DiscordRpc, HushConfig } from './types';
+import { Combo, DiscordRpc, HushConfig } from './types';
 
 export const DEFAULT_PORT = 8698;
 
+// Wispr Flow's push-to-talk default differs per OS: ⌃⌥ on macOS (external
+// keyboards), Ctrl + Win on Windows ('cmd' is the Win key off macOS).
+export function defaultShortcut(platform: string): Combo {
+  return platform === 'win32' ? { mods: ['ctrl', 'cmd'], key: '' } : { mods: ['ctrl', 'alt'], key: '' };
+}
+
 export const DEFAULT_CONFIG: HushConfig = {
   // Your Wispr Flow push-to-talk shortcut. You press it yourself (Wispr dictates
-  // natively); Hush only watches for it and mutes Discord while it's held. ⌃⌥ is
-  // Wispr's documented push-to-talk default for external keyboards — set the SAME
-  // combo here and in Wispr → Settings → General → Shortcuts.
-  shortcut: { mods: ['ctrl', 'alt'], key: '' },
+  // natively); Hush only watches for it and mutes Discord while it's held. Set the
+  // SAME combo here and in Wispr → Settings → General → Shortcuts.
+  shortcut: defaultShortcut(process.platform),
   discordRpc: { clientId: '', clientSecret: '' },
   mode: 'auto',
   unmuteDelayMs: 0,

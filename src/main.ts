@@ -1,6 +1,7 @@
-import { app, Tray, Menu, BrowserWindow, nativeImage, ipcMain, shell, systemPreferences, powerMonitor, MenuItemConstructorOptions } from 'electron';
+import { app, Tray, Menu, BrowserWindow, nativeImage, nativeTheme, ipcMain, shell, systemPreferences, powerMonitor, MenuItemConstructorOptions, NativeImage } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
+import { execFileSync } from 'child_process';
 import { uIOhook } from 'uiohook-napi';
 import { BRAND } from './brand';
 import { Combo, DiscordMuter, HushConfig, InputEngine, Mod } from './types';
@@ -87,10 +88,58 @@ let latestUpdate: UpdateInfo | null = null;
 let updateTimer: ReturnType<typeof setInterval> | null = null;
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
+const IS_MAC = process.platform === 'darwin';
+
+// Windows' taskbar follows the "system" theme, which is independent of the app
+// theme nativeTheme reports — read it from the registry (0 = dark taskbar).
+// Cached; refreshed when nativeTheme signals a theme change.
+let darkTaskbar = true;
+function readTaskbarTheme(): void {
+  if (process.platform !== 'win32') return;
+  try {
+    const out = execFileSync('reg', [
+      'query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize',
+      '/v', 'SystemUsesLightTheme',
+    ], { encoding: 'utf8', windowsHide: true });
+    darkTaskbar = !/SystemUsesLightTheme\s+REG_DWORD\s+0x1\b/.test(out);
+  } catch { darkTaskbar = true; } // key absent on older builds → dark taskbar
+}
+
+// Repaint a black-on-transparent template image in a solid color, keeping its
+// alpha. Each scale factor (1x, 2x) is recolored so the icon stays crisp on HiDPI.
+function tint(src: NativeImage, hex: string): NativeImage {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const out = nativeImage.createEmpty();
+  for (const scaleFactor of src.getScaleFactors()) {
+    // getSize() is in DIPs at every scale; the bitmap is DIPs × scaleFactor pixels.
+    const dip = src.getSize(scaleFactor);
+    const width = Math.round(dip.width * scaleFactor);
+    const height = Math.round(dip.height * scaleFactor);
+    const px = Buffer.from(src.toBitmap({ scaleFactor })); // BGRA, premultiplied
+    for (let i = 0; i < px.length; i += 4) {
+      const a = px[i + 3];
+      px[i] = Math.round((b * a) / 255);
+      px[i + 1] = Math.round((g * a) / 255);
+      px[i + 2] = Math.round((r * a) / 255);
+    }
+    out.addRepresentation({ scaleFactor, width, height, buffer: px });
+  }
+  return out;
+}
+
 function trayImage(name: 'trayIdleTemplate' | 'trayActiveTemplate') {
   const img = nativeImage.createFromPath(path.join(ASSETS, `${name}.png`));
-  img.setTemplateImage(true);
-  return img;
+  if (IS_MAC) {
+    // macOS menu bar: template images are auto-tinted for light/dark.
+    img.setTemplateImage(true);
+    return img;
+  }
+  // Windows has no template images: tint to contrast with the taskbar, and show
+  // the muted state in the brand's "safe" color so it reads at a glance.
+  if (name === 'trayActiveTemplate') return tint(img, BRAND.colors.safe);
+  return tint(img, darkTaskbar ? '#FFFFFF' : '#1A1A22');
 }
 
 // Best-effort check for a newer upstream release. Updates latestUpdate and, when
@@ -228,6 +277,9 @@ function refreshAppMenu(): void {
 // safe to call on every launch and on every settings save. openAsHidden keeps
 // macOS from flashing a window for this menu-bar app; it's ignored on Windows.
 function applyLaunchAtLogin(next: HushConfig): void {
+  // Dev runs would register the bare Electron binary (no app path), which opens
+  // an empty Electron window at every login — only the installed app registers.
+  if (!app.isPackaged) return;
   try {
     // openAsHidden covers macOS; Windows ignores it, so we register a --hidden
     // arg on the login-item launch and detect it in wasAutoLaunched().
@@ -414,6 +466,8 @@ function showWindow() {
     fullscreenable: false,
     title: BRAND.name,
     titleBarStyle: 'hiddenInset',
+    // Packaged builds embed the .ico; this also covers dev runs on Windows.
+    ...(IS_MAC ? {} : { icon: path.join(ASSETS, 'icon.ico') }),
     backgroundColor: BRAND.colors.bg,
     show: false,
     webPreferences: {
@@ -422,6 +476,9 @@ function showWindow() {
       nodeIntegration: false,
     },
   });
+  // Windows/Linux would otherwise show Electron's default File/Edit/View menu bar.
+  // Clipboard shortcuts in the text fields still work without it off macOS.
+  if (!IS_MAC) win.removeMenu();
   win.loadFile(RENDERER);
   win.once('ready-to-show', () => {
     win?.show();
@@ -580,9 +637,12 @@ if (!app.requestSingleInstanceLock()) {
       }
     }
 
+    readTaskbarTheme();
     tray = new Tray(trayImage('trayIdleTemplate'));
     tray.setToolTip(`${BRAND.name} — ${BRAND.taglineFr}`);
     tray.on('click', showWindow);
+    // Windows: re-tint the tray icon when the taskbar switches light/dark.
+    nativeTheme.on('updated', () => { readTaskbarTheme(); pushStatus(); });
 
     applyConfig(cfg);
     applyLaunchAtLogin(cfg); // honour the stored launch-at-login choice on boot

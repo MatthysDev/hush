@@ -17,7 +17,11 @@ export const DEBUG =
   markerExists();
 
 // A menu-bar app has no terminal, so logs also go to a file you can `tail -f`.
-export const LOG_FILE = path.join(os.homedir(), 'Library', 'Logs', 'Hush', 'hush-debug.log');
+// macOS: ~/Library/Logs/Hush. Windows: %APPDATA%\Hush\logs.
+export const LOG_FILE =
+  process.platform === 'win32'
+    ? path.join(process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming'), 'Hush', 'logs', 'hush-debug.log')
+    : path.join(os.homedir(), 'Library', 'Logs', 'Hush', 'hush-debug.log');
 
 let logReady = false;
 function ensureLog(): void {
